@@ -177,8 +177,26 @@ angular.module('index', [])
     };
 
     this.deviceManager = new DeviceManager();
+    
+	// Set LeapMotion frame loop.
+	this.handStart = this.handCurrent = null;
+    this.altPressed = this.shiftPressed = false;
+    Leap.loop({}, function (frame) {
+      if (frame.hands.length) {
+        this.handCurrent = frame;
+        if (this.altPressed && this.handStart) {
+          var hand = frame.hands[0];
+          var handTranslation = hand.translation(this.handStart);
+          var factor = this.shiftPressed ? 10 : 100;
+          var offset = Math.round(handTranslation[1] / factor * 1000) / 1000;
+          offsetNumberAndKeepSelection(offset);
+        }
+      }
+      this.previousFrame = frame;
+    }.bind(this));
+	
     this.riftSandbox = new RiftSandbox(window.innerWidth, window.innerHeight);
-
+	
     this.deviceManager.onResizeFOV = function (
       renderTargetSize, fovLeft, fovRight
     ) {
@@ -205,29 +223,6 @@ angular.module('index', [])
       this.textarea.selectionStart = this.textarea.selectionEnd = start;
     }.bind(this);
 
-    this.handStart = this.handCurrent = null;
-    this.altPressed = this.shiftPressed = false;
-    Leap.loop({}, function (frame) {
-      if (frame.hands.length) {
-        this.handCurrent = frame;
-        if (this.altPressed && this.handStart) {
-          var hand = frame.hands[0];
-          var handTranslation = hand.translation(this.handStart);
-          var factor = this.shiftPressed ? 10 : 100;
-          var offset = Math.round(handTranslation[1] / factor * 1000) / 1000;
-          offsetNumberAndKeepSelection(offset);
-        }
-      }
-      this.previousFrame = frame;
-    }.bind(this));
-	Leap.loopController.use('transform', {
-	  vr: true,
-	  effectiveParent: camera
-	});
-	Leap.loopController.use('boneHand', {
-      targetEl: document.body,
-      arm: true
-    });
 
     OAuth.initialize('bnVXi9ZBNKekF-alA1aF7PQEpsU');
     var apiCache = {};
@@ -420,6 +415,22 @@ angular.module('index', [])
 
     $scope.$watch('sketch.getCode()', function (code) {
       this.riftSandbox.clearScene();
+	  
+		// Set plugins for bone hand rendering.
+		Leap.loopController.use('transform', {
+			// vr: true,
+			position: new THREE.Vector3(0, -1.6, -3.2),
+			scale: 0.01,
+			effectiveParent: this.riftSandbox.camera
+		});
+		Leap.loopController.use('boneHand', {
+			scene: this.riftSandbox.scene,
+			arm: true,
+			render: (function() {
+				return function(timestamp) { this.riftSandbox.render() }
+			}).bind(this)
+		});
+	  
       var _sketchLoop;
       $scope.error = null;
       try {
