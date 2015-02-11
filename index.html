@@ -22,7 +22,8 @@
     <script src="lib/ThreeJS/Three.js"></script>
     <script src="lib/mousetrap.js"></script>
     <script src="//js.leapmotion.com/leap-0.6.4.js"></script>
-	<script src="//js.leapmotion.com/leap-plugins-0.1.10.js"></script>
+	<!--<script src="//js.leapmotion.com/leap-plugins-0.1.10.js"></script>-->
+	<script src="js/custom-bonehand-plugin.js"></script>
     <script src="lib/seedrandom.min.js"></script>
     <script src="bower_components/lodash/dist/lodash.min.js"></script>
     <script src="bower_components/jquery/dist/jquery.js"></script>
@@ -44,6 +45,10 @@
           class="threed mousetrap" ng-repeat="file in sketch.files"
           ng-model="file.contents" spellcheck="false">
         </textarea>
+		<span
+			class="threed alert alert-leap">
+			{{leapinfo.text}}
+		</span>
         <span class="threed alert alert-info">
           Alt + v - toggle VR | Alt + z - zero VR sensor<br />
           Alt + e - toggle editor |

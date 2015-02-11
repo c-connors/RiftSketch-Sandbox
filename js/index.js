@@ -418,29 +418,10 @@ angular.module('index', [])
 
     this.deviceManager.init();
     this.mainLoop();
-
+	
+	$scope.leapinfo = {text:"[default]"};
     $scope.$watch('sketch.getCode()', function (code) {
       this.riftSandbox.clearScene();
-	  
-		Leap.plugin('reader', function(options) {
-			return {
-				frame: function(frame) {
-					for (var i = 0; i < frame.hands.length; i++) {
-						var hand = frame.hands[i];
-						for (var ii = 0; ii < 1; ii++) {
-							var finger = hand.fingers[ii];
-							var pos = finger.stabilizedTipPosition;
-							//var pt = Leap.loopController.plugins.transform.getTransform();
-							//var tMatrix = new THREE.Matrix4(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5], pt[6], pt[7], pt[8], pt[9], pt[10], pt[11], pt[12], pt[13], pt[14], pt[15]);
-							// console.log(Leap.loopController.plugins.transform.getTransform());
-							//var transPosition = (new THREE.Vector3(pos[0], pos[1], pos[2])).applyMatrix4(tMatrix);
-							console.log(pos);
-							moveCube(pos);
-						}
-					}
-				}
-			}
-		});
 		
 		// Set plugins for bone hand rendering.
 		Leap.loopController.use('transform', {
@@ -449,18 +430,30 @@ angular.module('index', [])
 			scale: LEAP_SCALE,
 			effectiveParent: this.riftSandbox.camera
 		});
-		Leap.loopController.use('reader', {});
-		Leap.loopController.use('boneHand', {
+		Leap.loopController.use('customBoneHand', {
 			scene: this.riftSandbox.scene,
 			arm: true,
 			render: (function() {
 				return function(timestamp) { this.riftSandbox.render() }
 			}).bind(this)
 		});
+		Leap.loopController.use('reader', {riftSandbox: this.riftSandbox, setLeapInfo: function(s){
+			$scope.leapinfo.text = s;
+		}});
 		
-		if (this.cubePosition) {
-			console.log(this.cubePosition);
+		/*var handMesh = Leap.loopController.plugins.boneHand.HandMesh.get();
+		for(var i = 0; i < handMesh.fingerMeshes.length; i++) {
+			for(var ii = 0; ii < handMesh.fingerMeshes[i].length; ii++) {
+				setChildrenLeapIntangible(handMesh.fingerMeshes[i][ii]);
+			}
 		}
+		setChildrenLeapIntangible(handMesh.armMesh);
+		for(var i = 0; i < handMesh.armBones.length; i++) {
+			setChildrenLeapIntangible(handMesh.armBones[i]);
+		}
+		for(var i = 0; i < handMesh.armSpheres.length; i++) {
+			setChildrenLeapIntangible(handMesh.armSpheres[i]);
+		}*/
 	  
       var _sketchLoop;
       $scope.error = null;
@@ -477,6 +470,8 @@ angular.module('index', [])
       catch (err) {
         $scope.error = err.toString();
       }
+	  
+	  
       if (_sketchLoop) {
         this.sketchLoop = _sketchLoop;
       }
@@ -484,3 +479,10 @@ angular.module('index', [])
     }.bind(this));
   }]);
 }());
+
+/*function setChildrenLeapIntangible(current) {
+	current.leapIntangible = true;
+	for(var i = 0; i < current.children.length; i++) {
+		setChildrenLeapIntangible(current.children[i]);
+	}
+}*/
