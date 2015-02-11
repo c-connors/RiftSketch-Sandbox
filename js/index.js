@@ -2,6 +2,9 @@
 (function () {
 'use strict';
 
+const LEAP_SCALE = 0.01;
+const LEAP_TRANSLATE = new THREE.Vector3(0, -1.6, -3.2);
+
 var File = (function () {
   var constr = function (name, contents) {
     this.name = name || 'Example';
@@ -223,6 +226,9 @@ angular.module('index', [])
       this.textarea.selectionStart = this.textarea.selectionEnd = start;
     }.bind(this);
 
+	var moveCube = function (position) {
+		this.cubePosition = position;
+	}.bind(this);
 
     OAuth.initialize('bnVXi9ZBNKekF-alA1aF7PQEpsU');
     var apiCache = {};
@@ -416,13 +422,34 @@ angular.module('index', [])
     $scope.$watch('sketch.getCode()', function (code) {
       this.riftSandbox.clearScene();
 	  
+		Leap.plugin('reader', function(options) {
+			return {
+				frame: function(frame) {
+					for (var i = 0; i < frame.hands.length; i++) {
+						var hand = frame.hands[i];
+						for (var ii = 0; ii < 1; ii++) {
+							var finger = hand.fingers[ii];
+							var pos = finger.stabilizedTipPosition;
+							//var pt = Leap.loopController.plugins.transform.getTransform();
+							//var tMatrix = new THREE.Matrix4(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5], pt[6], pt[7], pt[8], pt[9], pt[10], pt[11], pt[12], pt[13], pt[14], pt[15]);
+							// console.log(Leap.loopController.plugins.transform.getTransform());
+							//var transPosition = (new THREE.Vector3(pos[0], pos[1], pos[2])).applyMatrix4(tMatrix);
+							console.log(pos);
+							moveCube(pos);
+						}
+					}
+				}
+			}
+		});
+		
 		// Set plugins for bone hand rendering.
 		Leap.loopController.use('transform', {
 			// vr: true,
-			position: new THREE.Vector3(0, -1.6, -3.2),
-			scale: 0.01,
+			position: LEAP_TRANSLATE,
+			scale: LEAP_SCALE,
 			effectiveParent: this.riftSandbox.camera
 		});
+		Leap.loopController.use('reader', {});
 		Leap.loopController.use('boneHand', {
 			scene: this.riftSandbox.scene,
 			arm: true,
@@ -430,6 +457,10 @@ angular.module('index', [])
 				return function(timestamp) { this.riftSandbox.render() }
 			}).bind(this)
 		});
+		
+		if (this.cubePosition) {
+			console.log(this.cubePosition);
+		}
 	  
       var _sketchLoop;
       $scope.error = null;
