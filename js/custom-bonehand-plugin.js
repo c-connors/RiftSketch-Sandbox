@@ -301,7 +301,6 @@
   	Leap.plugin('reader', function(options) {
 		return {
 			frame: function(frame) {
-				options.setLeapInfo("hi");
 				for (var i = 0; i < Math.min(frame.hands.length, 1); i++) {
 					var hand = frame.hands[i];
 					for (var ii = 0; ii < 1; ii++) {
@@ -309,17 +308,17 @@
 						var child = undefined;
 						var finger = hand.fingers[ii];
 						var pos = finger.tipPosition;
-						for (var i = 0; i < options.riftSandbox.scene.children.length; i++) {
-							if(!options.riftSandbox.scene.children[i].leapIntangible) {
-								var meshPos = options.riftSandbox.scene.children[i].position;
+						for (var i = 0; i < options.getRiftSandbox().scene.children.length; i++) {
+							if(!options.getRiftSandbox().scene.children[i].leapIntangible) {
+								var meshPos = options.getRiftSandbox().scene.children[i].position;
 								var dist = Math.sqrt(Math.pow(meshPos.x - pos[0], 2) + Math.pow(meshPos.y - pos[1], 2) + Math.pow(meshPos.z - pos[2], 2));
 								if(minDist < 0 || dist < minDist) {
 									minDist = dist;
-									child = options.riftSandbox.scene.children[i];
+									child = options.getRiftSandbox().scene.children[i];
 								}
 							}
 						}	
-						console.log(minDist + ": " + child.position.x + ", " + child.position.y + ", " + child.position.z);
+						options.setLeapInfo("(" + child.position.x + ", " + child.position.y + ", " + child.position.z + ")");
 					}
 				}
 			}

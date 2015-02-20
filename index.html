@@ -46,8 +46,9 @@
           ng-model="file.contents" spellcheck="false">
         </textarea>
 		<span
+			ng-controller="LeapInfoController"
 			class="threed alert alert-leap">
-			{{leapinfo.text}}
+			{{ leapInfo.text }}
 		</span>
         <span class="threed alert alert-info">
           Alt + v - toggle VR | Alt + z - zero VR sensor<br />
