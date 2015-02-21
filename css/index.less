@@ -22,14 +22,16 @@ body {
     transform: translate(0, 0);
   }
   .alert{
-	&.alert-leap{
-	  transform: translate(0, 210px);
-	}
     &.alert-info{
-      transform: translate(0, 260px);
+	  &.leap-info{
+	    transform: translate(0, 210px);
+	  }
+	  &.controls-info{
+        transform: translate(0, 240px);
+	  }
     }
     &.alert-warning{
-      transform: translate(0, 315px);
+      transform: translate(0, 295px);
     }
   }
   #monitor {
@@ -46,15 +48,22 @@ textarea {
 .alert {
   &.alert-info{
     text-align: center;
-    transform:
-      rotateY(0deg)
-      translate3d(-100px, 310px, 500px)
-      translate(-100px, -150px);
+	&.leap-info{
+      transform:
+        rotateY(0deg)
+	    translate3d(-100px, 310px, 500px)
+        translate(-100px, -150px);
+	}
+	&.controls-info{
+      transform:
+        rotateY(0deg)
+        translate3d(-100px, 360px, 500px)
+	}
   }
   &.alert-warning{
     transform:
       rotateY(0deg)
-      translate3d(-100px, 360px, 500px)
+      translate3d(-100px, 410px, 500px)
       translate(-100px, -150px);
   }
   width: 400px;
@@ -72,32 +81,6 @@ textarea {
   width: 400px;
   clip: rect(0, 400px, 215px, 0);
   opacity: 0.5;
-}
-
-.dk1 {
-  textarea {
-    transform: rotateY(0deg) translate3d(-200px, 0, 500px) translate(-100px, -150px);
-    font-size: 20pt;
-    width: 666px;
-    height: 400px;
-  }
-  .alert {
-    font-size: 17pt;
-    width: 700px;
-    line-height: 24px;
-    &.alert-info{
-      transform:
-        rotateY(0deg)
-        translate3d(-200px, 410px, 500px)
-        translate(-100px, -150px);
-    }
-    &.alert-warning{
-      transform:
-        rotateY(0deg)
-        translate3d(-200px, 480px, 500px)
-        translate(-100px, -150px);
-    }
-  }
 }
 
 .modal {

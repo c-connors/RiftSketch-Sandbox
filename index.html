@@ -45,12 +45,11 @@
           class="threed mousetrap" ng-repeat="file in sketch.files"
           ng-model="file.contents" spellcheck="false">
         </textarea>
-		<span
-			ng-controller="LeapInfoController"
-			class="threed alert alert-leap">
+		<span class="threed alert alert-info leap-info"
+			ng-controller="LeapInfoController">
 			{{ leapInfo.text }}
 		</span>
-        <span class="threed alert alert-info">
+        <span class="threed alert alert-info controls-info">
           Alt + v - toggle VR | Alt + z - zero VR sensor<br />
           Alt + e - toggle editor |
           Alt + j/k, u/i, m/n - decrement or increment numbers
