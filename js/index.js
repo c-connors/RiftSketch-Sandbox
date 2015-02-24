@@ -421,18 +421,23 @@
 			
 			// Run through Esprima to find instantiation of Mesh selected by LeapMotion.
 			Mousetrap.bind(['ctrl+m'], function() {
-				// NOTE: This section below kind of works but is doesn't reach into functions properly yet. 
-				var calls = esprimaFindMeshesAddedToScene(this.esprimaOut.body);
-				for(var i = 0; i < calls.length; i++) {
-					var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
-					console.log(calls[i].loc.start.line - sketchFuncBeginLine + 1);
-					console.log(this.riftSandbox.leapMesh.riftSketch_identifier);
-					if(calls[i].loc.start.line - sketchFuncBeginLine == this.riftSandbox.leapMesh.riftSketch_identifier.line /*&& calls[i].loc.start.column == this.riftSandbox.leapMesh.riftSketch_identifier.column*/) {
-						var declaration = esprimaFindVariableDeclaration(this.esprimaOut.body, calls[i]);
-						if(declaration.type = "NewExpression") {
-							var sketchFuncBegin = esprimaOut.body[0].body.body[0].range[0];
-							var rangeOffset = sketchFuncBegin + codeHeader.length;
-							setCursorPosition(this.textarea, declaration.range[0] - rangeOffset, declaration.range[1] - rangeOffset);
+				if(this.riftSandbox.leapMesh) {
+					var results = esprimaFindMeshesAddedToScene(this.esprimaOut.body);
+					for(var i = 0; i < results.length; i++) {
+						var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
+						var sketchFuncLine = results[i].loc.start.line - sketchFuncBeginLine + 1;
+						var sketchFuncColumn = results[i].loc.start.column + 1;
+						console.log("results[i] (sketchFuncLine, loc.start.column):");
+						console.log(sketchFuncLine + ", " + results[i].loc.start.column);
+						console.log("leapMesh.riftSketch_identifier:");
+						console.log(this.riftSandbox.leapMesh.riftSketch_identifier);
+						if(sketchFuncLine == this.riftSandbox.leapMesh.riftSketch_identifier.line && sketchFuncColumn == this.riftSandbox.leapMesh.riftSketch_identifier.column) {
+							var declaration = esprimaFindVariableDeclaration(this.esprimaOut.body, results[i].expression.arguments[0]);
+							if(declaration.type = "NewExpression") {
+								var sketchFuncBegin = this.esprimaOut.body[0].body.body[0].range[0];
+								var rangeOffset = sketchFuncBegin + this.codeHeader.length;
+								setCursorPosition(this.textarea, declaration.range[0] - rangeOffset, declaration.range[1] - rangeOffset);
+							}
 						}
 					}
 				}
@@ -499,30 +504,16 @@
                 }).bind(this)
             });
 
-            /*var handMesh = Leap.loopController.plugins.boneHand.HandMesh.get();
-		for(var i = 0; i < handMesh.fingerMeshes.length; i++) {
-			for(var ii = 0; ii < handMesh.fingerMeshes[i].length; ii++) {
-				setChildrenLeapIntangible(handMesh.fingerMeshes[i][ii]);
-			}
-		}
-		setChildrenLeapIntangible(handMesh.armMesh);
-		for(var i = 0; i < handMesh.armBones.length; i++) {
-			setChildrenLeapIntangible(handMesh.armBones[i]);
-		}
-		for(var i = 0; i < handMesh.armSpheres.length; i++) {
-			setChildrenLeapIntangible(handMesh.armSpheres[i]);
-		}*/
-
             var _sketchLoop;
             $scope.error = null;
             try {
                 /* jshint -W054 */
-				var codeHeader = '"use strict";\n'
+				this.codeHeader = '"use strict";\n'
 					+ 'var riftSketch_originalSceneAdd = scene.add;\n'
 					+ 'scene.add = function(mesh) { var err = new Error; var parts = err.stack.split("\\n", 2)[1].split(":"); mesh.riftSketch_identifier = {line:parts[parts.length - 2], column:parts[parts.length - 1]}; riftSketch_originalSceneAdd(mesh); };\n';
                 var _sketchFunc = new Function(
                     'scene', 'camera', 'api',
-                    codeHeader + code
+                    this.codeHeader + code
                 );
 				
 				// Parse with Esprima.
@@ -543,53 +534,44 @@
     }]);
 }());
 
-function esprimaFindVariableDeclaration(body, id) {
-	var init = null;
-	for(var i = 0; i < body.length; i++) {
-		if(body[i].type == "VariableDeclaration") {
-			for(var ii = 0; ii < body[i].declarations.length; ii++) {
-				if(body[i].declarations[ii].type == "VariableDeclarator") {
-					if(body[i].declarations[ii].id.type == "Identifier") {
-						if(body[i].declarations[ii].id.name == id.name) {
-							init = body[i].declarations[ii].init;
-							break;
-						}
-					}
-				}
-			}
-		} else if(body[i].type == "FunctionDeclaration") {
-			if(body[i].body.type = "BlockStatement") {
-				init = esprimaFindVariableDeclaration(body[i].body.body, id);
-			}
+function esprimaWalkForCondition(body, condition) {
+	var results = [];
+	if(Object.prototype.toString.call(body) == "[object Array]") {
+		for(var i = 0; i < body.length; i++) {
+			results = results.concat(esprimaWalkForCondition(body[i], condition));
 		}
+	} else if(condition(body)) {
+		// Condition success, push to walk results.
+		results.push(body);
+	} else if(body.init) {
+		results = results.concat(esprimaWalkForCondition(body.init, condition));
+	} else if(body.body) {
+		results = results.concat(esprimaWalkForCondition(body.body, condition));
+	} else if(body.declarations) {
+		results = results.concat(esprimaWalkForCondition(body.declarations, condition));
 	}
-	return init;
+	return results;
+}
+
+function esprimaFindVariableDeclaration(body, id) {
+	var results = esprimaWalkForCondition(body, function(body) {
+		return body.type == "VariableDeclarator"
+				&& body.id.type == "Identifier"
+				&& body.id.name == id.name;
+	});
+	return results[0].init;
 }
 
 function esprimaFindMeshesAddedToScene(body) {
-	var calls = [];
-	for(var i = 0; i < body.length; i++) {
-		if(body[i].type == "ExpressionStatement") {
-			if(body[i].expression.type == "CallExpression") {
-				if(body[i].expression.callee.type == "MemberExpression") {
-					if(body[i].expression.callee.object.type == "Identifier") {
-						if(body[i].expression.callee.object.name == "scene") {
-							if(body[i].expression.callee.property.type == "Identifier") {
-								if(body[i].expression.callee.property.name == "add") {
-									calls.push(body[i].expression.arguments[0]);
-								}
-							}
-						}
-					}
-				}
-			}
-		} else if(body[i].type == "FunctionDeclaration") {
-			if(body[i].body.type = "BlockStatement") {
-				calls = calls.concat(esprimaFindMeshesAddedToScene(body[i].body.body));
-			}
-		}
-	}
-	return calls;
+	return esprimaWalkForCondition(body, function(body) {
+		return body.type == "ExpressionStatement"
+				&& body.expression.type == "CallExpression"
+				&& body.expression.callee.type == "MemberExpression"
+				&& body.expression.callee.object.type == "Identifier"
+				&& body.expression.callee.object.name == "scene"
+				&& body.expression.callee.property.type == "Identifier"
+				&& body.expression.callee.property.name == "add";
+	});
 }
 
 function setCursorPosition(oInput,oStart,oEnd) {
