@@ -319,6 +319,7 @@
 							}
 						}	
 						options.setLeapInfo("(" + child.position.x + ", " + child.position.y + ", " + child.position.z + ")");
+						options.getRiftSandbox().leapMesh = child;
 					}
 				}
 			}

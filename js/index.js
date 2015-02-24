@@ -110,7 +110,7 @@
     var module = angular.module('index', []);
 
     module.controller('LeapInfoController', ['$scope', function($scope) {
-		$scope.leapInfo = {text: "ABC"};
+		$scope.leapInfo = {text: "No Mesh selected"};
         var options = {
             getRiftSandbox: $scope.getRiftSandbox,
 			setLeapInfo: function(s) {
@@ -418,6 +418,25 @@
                 this.altPressed = false;
                 return false;
             }.bind(this), 'keyup');
+			
+			// Run through Esprima to find instantiation of Mesh selected by LeapMotion.
+			Mousetrap.bind(['ctrl+m'], function() {
+				// NOTE: This section below kind of works but is doesn't reach into functions properly yet. 
+				var calls = esprimaFindMeshesAddedToScene(this.esprimaOut.body);
+				for(var i = 0; i < calls.length; i++) {
+					var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
+					console.log(calls[i].loc.start.line - sketchFuncBeginLine + 1);
+					console.log(this.riftSandbox.leapMesh.riftSketch_identifier);
+					if(calls[i].loc.start.line - sketchFuncBeginLine == this.riftSandbox.leapMesh.riftSketch_identifier.line /*&& calls[i].loc.start.column == this.riftSandbox.leapMesh.riftSketch_identifier.column*/) {
+						var declaration = esprimaFindVariableDeclaration(this.esprimaOut.body, calls[i]);
+						if(declaration.type = "NewExpression") {
+							var sketchFuncBegin = esprimaOut.body[0].body.body[0].range[0];
+							var rangeOffset = sketchFuncBegin + codeHeader.length;
+							setCursorPosition(this.textarea, declaration.range[0] - rangeOffset, declaration.range[1] - rangeOffset);
+						}
+					}
+				}
+			}.bind(this, 'keydown'));
         }.bind(this);
         this.bindKeyboardShortcuts();
 
@@ -498,17 +517,23 @@
             $scope.error = null;
             try {
                 /* jshint -W054 */
+				var codeHeader = '"use strict";\n'
+					+ 'var riftSketch_originalSceneAdd = scene.add;\n'
+					+ 'scene.add = function(mesh) { var err = new Error; var parts = err.stack.split("\\n", 2)[1].split(":"); mesh.riftSketch_identifier = {line:parts[parts.length - 2], column:parts[parts.length - 1]}; riftSketch_originalSceneAdd(mesh); };\n';
                 var _sketchFunc = new Function(
                     'scene', 'camera', 'api',
-                    '"use strict";\n' + code
+                    codeHeader + code
                 );
+				
+				// Parse with Esprima.
+				this.esprimaOut = esprima.parse(_sketchFunc, {loc: true, range: true});
+				
                 /* jshint +W054 */
                 _sketchLoop = _sketchFunc(
                     this.riftSandbox.scene, this.riftSandbox.cameraPivot, api);
             } catch (err) {
                 $scope.error = err.toString();
             }
-
 
             if (_sketchLoop) {
                 this.sketchLoop = _sketchLoop;
@@ -517,9 +542,65 @@
         }.bind(this));
     }]);
 }());
-/*function setChildrenLeapIntangible(current) {
-	current.leapIntangible = true;
-	for(var i = 0; i < current.children.length; i++) {
-		setChildrenLeapIntangible(current.children[i]);
+
+function esprimaFindVariableDeclaration(body, id) {
+	var init = null;
+	for(var i = 0; i < body.length; i++) {
+		if(body[i].type == "VariableDeclaration") {
+			for(var ii = 0; ii < body[i].declarations.length; ii++) {
+				if(body[i].declarations[ii].type == "VariableDeclarator") {
+					if(body[i].declarations[ii].id.type == "Identifier") {
+						if(body[i].declarations[ii].id.name == id.name) {
+							init = body[i].declarations[ii].init;
+							break;
+						}
+					}
+				}
+			}
+		} else if(body[i].type == "FunctionDeclaration") {
+			if(body[i].body.type = "BlockStatement") {
+				init = esprimaFindVariableDeclaration(body[i].body.body, id);
+			}
+		}
 	}
-}*/
+	return init;
+}
+
+function esprimaFindMeshesAddedToScene(body) {
+	var calls = [];
+	for(var i = 0; i < body.length; i++) {
+		if(body[i].type == "ExpressionStatement") {
+			if(body[i].expression.type == "CallExpression") {
+				if(body[i].expression.callee.type == "MemberExpression") {
+					if(body[i].expression.callee.object.type == "Identifier") {
+						if(body[i].expression.callee.object.name == "scene") {
+							if(body[i].expression.callee.property.type == "Identifier") {
+								if(body[i].expression.callee.property.name == "add") {
+									calls.push(body[i].expression.arguments[0]);
+								}
+							}
+						}
+					}
+				}
+			}
+		} else if(body[i].type == "FunctionDeclaration") {
+			if(body[i].body.type = "BlockStatement") {
+				calls = calls.concat(esprimaFindMeshesAddedToScene(body[i].body.body));
+			}
+		}
+	}
+	return calls;
+}
+
+function setCursorPosition(oInput,oStart,oEnd) {
+       if( oInput.setSelectionRange ) {
+         oInput.setSelectionRange(oStart,oEnd);
+       }
+       else if( oInput.createTextRange ) {
+         var range = oInput.createTextRange();
+          range.collapse(true);
+          range.moveEnd('character',oEnd);
+          range.moveStart('character',oStart);
+          range.select();
+       }
+}
