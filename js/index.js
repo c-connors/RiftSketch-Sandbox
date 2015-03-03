@@ -188,6 +188,18 @@
                     this.riftSandbox.updateCameraPositionRotation();
                 }
 
+                // Pick out the objects the user cares about (that is, that the user has named)
+                //console.log("number of things in scene: " + this.riftSandbox.sceneStuff.length);
+                var namedObjects = [];
+                for (var i = 0; i < this.riftSandbox.sceneStuff.length; i++) {
+                    if (this.riftSandbox.sceneStuff[i].name) {
+                        namedObjects.push(this.riftSandbox.sceneStuff[i]);
+                    }
+                }
+
+                this.riftSandbox.namedObjects = namedObjects;
+                //console.log("There are " + this.riftSandbox.namedObjects.length + " named objects");
+
                 try {
                     this.sketchLoop();
                 } catch (err) {
@@ -431,10 +443,10 @@
                             var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
                             var sketchFuncLine = results[i].loc.start.line - sketchFuncBeginLine + 1;
                             var sketchFuncColumn = results[i].loc.start.column + 1;
-                            console.log("results[i] (sketchFuncLine, loc.start.column):");
+                            /*console.log("results[i] (sketchFuncLine, loc.start.column):");
                             console.log(sketchFuncLine + ", " + results[i].loc.start.column);
                             console.log("leapMesh.riftSketch_identifier:");
-                            console.log(this.riftSandbox.leapMesh.riftSketch_identifier);
+                            console.log(this.riftSandbox.leapMesh.riftSketch_identifier);*/
                             if (sketchFuncLine == this.riftSandbox.leapMesh.riftSketch_identifier.line && sketchFuncColumn == this.riftSandbox.leapMesh.riftSketch_identifier.column) {
                                 var declaration = esprimaFindVariableDeclaration(this.esprimaOut.body, results[i].expression.arguments[0]);
                                 if (declaration.type = "NewExpression") {
