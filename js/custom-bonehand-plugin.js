@@ -295,25 +295,24 @@
   Leap.plugin('reader', function (options) {
     return {
       frame: function (frame) {
+        var namedObjects = options.getRiftSandbox().namedObjects;
         for (var i = 0; i < Math.min(frame.hands.length, 1); i++) {
           var hand = frame.hands[i];
           for (var ii = 0; ii < 1; ii++) {
             var minDist = -1;
-            var child = undefined;
+            var mesh = undefined;
             var finger = hand.fingers[ii];
             var pos = finger.tipPosition;
-            for (var i = 0; i < options.getRiftSandbox().scene.children.length; i++) {
-              if (options.getRiftSandbox().scene.children[i].riftSketch_identifier) {
-                var meshPos = options.getRiftSandbox().scene.children[i].position;
-                var dist = Math.sqrt(Math.pow(meshPos.x - pos[0], 2) + Math.pow(meshPos.y - pos[1], 2) + Math.pow(meshPos.z - pos[2], 2));
-                if (minDist < 0 || dist < minDist) {
-                  minDist = dist;
-                  child = options.getRiftSandbox().scene.children[i];
-                }
+            for (var j = 0; j < namedObjects.length; j++) {
+              var meshPos = namedObjects[j].position;
+              var dist = Math.sqrt(Math.pow(meshPos.x - pos[0], 2) + Math.pow(meshPos.y - pos[1], 2) + Math.pow(meshPos.z - pos[2], 2));
+              if (minDist < 0 || dist < minDist) {
+                minDist = dist;
+                mesh = namedObjects[j];
               }
             }
-            options.setLeapInfo("(" + child.position.x + ", " + child.position.y + ", " + child.position.z + ")");
-            options.getRiftSandbox().leapMesh = child;
+            options.setLeapInfo("(" + mesh.position.x + ", " + mesh.position.y + ", " + mesh.position.z + ")");
+            options.getRiftSandbox().leapMesh = mesh;
           }
         }
       }
