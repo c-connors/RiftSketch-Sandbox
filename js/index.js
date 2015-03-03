@@ -440,19 +440,24 @@
                     if (this.riftSandbox.leapMesh) {
                         var results = esprimaFindMeshesAddedToScene(this.esprimaOut.body);
                         for (var i = 0; i < results.length; i++) {
-                            var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
-                            var sketchFuncLine = results[i].loc.start.line - sketchFuncBeginLine + 1;
-                            var sketchFuncColumn = results[i].loc.start.column + 1;
-                            /*console.log("results[i] (sketchFuncLine, loc.start.column):");
-                            console.log(sketchFuncLine + ", " + results[i].loc.start.column);
-                            console.log("leapMesh.riftSketch_identifier:");
-                            console.log(this.riftSandbox.leapMesh.riftSketch_identifier);*/
-                            if (sketchFuncLine == this.riftSandbox.leapMesh.riftSketch_identifier.line && sketchFuncColumn == this.riftSandbox.leapMesh.riftSketch_identifier.column) {
-                                var declaration = esprimaFindVariableDeclaration(this.esprimaOut.body, results[i].expression.arguments[0]);
-                                if (declaration.type = "NewExpression") {
-                                    var sketchFuncBegin = this.esprimaOut.body[0].body.body[0].range[0];
-                                    var rangeOffset = sketchFuncBegin + this.codeHeader.length;
-                                    setCursorPosition(this.textarea, declaration.range[0] - rangeOffset, declaration.range[1] - rangeOffset);
+
+                            // ignore if light
+                            var name = results[i].expression.arguments[0].name;
+
+                            if (name !== 'light') {
+                                console.log(name);
+
+                                var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
+                                var sketchFuncLine = results[i].loc.start.line - sketchFuncBeginLine + 1;
+                                var sketchFuncColumn = results[i].loc.start.column + 1;
+
+                                if (sketchFuncLine == this.riftSandbox.leapMesh.riftSketch_identifier.line && sketchFuncColumn == this.riftSandbox.leapMesh.riftSketch_identifier.column) {
+                                    var declaration = esprimaFindVariableDeclaration(this.esprimaOut.body, results[i].expression.arguments[0]);
+                                    if (declaration.type = "NewExpression") {
+                                        var sketchFuncBegin = this.esprimaOut.body[0].body.body[0].range[0];
+                                        var rangeOffset = sketchFuncBegin + this.codeHeader.length;
+                                        setCursorPosition(this.textarea, declaration.range[0] - rangeOffset, declaration.range[1] - rangeOffset);
+                                    }
                                 }
                             }
                         }
