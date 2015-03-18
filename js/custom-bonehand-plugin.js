@@ -311,8 +311,14 @@
                 mesh = namedObjects[j];
               }
             }
-            options.setLeapInfo("(" + mesh.position.x + ", " + mesh.position.y + ", " + mesh.position.z + ")");
-            options.getRiftSandbox().leapMesh = mesh;
+			if (mesh) {
+				options.setLeapInfo("(" + mesh.position.x + ", " + mesh.position.y + ", " + mesh.position.z + ")");
+				options.getRiftSandbox().leapMesh = mesh;
+			} else {
+				options.setLeapInfo("No mesh selected.");
+				options.getRiftSandbox().leapMesh = null;
+			}
+			options.getRiftSandbox().leapPos = [pos[0], pos[1], pos[2]];
           }
         }
       }

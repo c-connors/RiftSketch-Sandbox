@@ -4,6 +4,7 @@
 
     const LEAP_SCALE = 0.01;
     const LEAP_TRANSLATE = new THREE.Vector3(0, -1.6, -3.2);
+	const CODE_HEADER = '"use strict";\n' + 'var riftSketch_originalSceneAdd = scene.add;\n' + 'scene.add = function(mesh) { mesh.riftSketch_stack = (new Error).stack; riftSketch_originalSceneAdd(mesh); };\n';
 
     var File = (function () {
         var constr = function (name, contents) {
@@ -80,6 +81,31 @@
         constr.prototype.offsetOriginalNumber = function (offset) {
             this.spinNumberAt(this.originalIndex, 1, offset, this.originalNumber);
         };
+		
+		// Sets a value at a particular text range
+		constr.prototype.setValueAt = function (
+            range, value
+        ) {
+            this.contents = (
+                this.contents.substring(0, range[0]) +
+                value +
+                this.contents.substring(range[1])
+            );
+        };
+		
+		
+		// Adds a statement to the code that sets a mesh's position
+        constr.prototype.hardcodeMeshPosition = function (
+            index, identifier, x, y, z
+        ) {
+			var newCode = ";\n" + identifier + ".position.set(" + x + ", " + y + ", " + z + ")";
+            this.contents = (
+                this.contents.substring(0, index) +
+				newCode +
+                this.contents.substring(index)
+            );
+        };
+		
         return constr;
     }());
 
@@ -121,6 +147,14 @@
                     this.$apply();
                 }.bind($scope),
             };
+                // Set plugins for bone hand rendering.
+                Leap.loopController.use('transform', {
+                    // vr: true,
+                    position: LEAP_TRANSLATE,
+                    scale: LEAP_SCALE,
+                    effectiveParent: $scope.getRiftSandbox().camera
+                });
+
             Leap.loopController.use('reader', options);
     }]);
 
@@ -437,32 +471,40 @@
 
                 // Run through Esprima to find instantiation of Mesh selected by LeapMotion.
                 Mousetrap.bind(['ctrl+m'], function () {
-                    if (this.riftSandbox.leapMesh) {
-                        var results = esprimaFindMeshesAddedToScene(this.esprimaOut.body);
-                        for (var i = 0; i < results.length; i++) {
-
-                            // ignore if light
-                            var name = results[i].expression.arguments[0].name;
-
-                            if (name !== 'light') {
-                                console.log(name);
-
-                                var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
-                                var sketchFuncLine = results[i].loc.start.line - sketchFuncBeginLine + 1;
-                                var sketchFuncColumn = results[i].loc.start.column + 1;
-
-                                if (sketchFuncLine == this.riftSandbox.leapMesh.riftSketch_identifier.line && sketchFuncColumn == this.riftSandbox.leapMesh.riftSketch_identifier.column) {
-                                    var declaration = esprimaFindVariableDeclaration(this.esprimaOut.body, results[i].expression.arguments[0]);
-                                    if (declaration.type = "NewExpression") {
-                                        var sketchFuncBegin = this.esprimaOut.body[0].body.body[0].range[0];
-                                        var rangeOffset = sketchFuncBegin + this.codeHeader.length;
-                                        setCursorPosition(this.textarea, declaration.range[0] - rangeOffset, declaration.range[1] - rangeOffset);
-                                    }
-                                }
-                            }
+					mesh = esprimaFindLeapMesh();
+					if (mesh) {
+                        var declaration = esprimaFindVariableDeclaration(this.esprimaOut.body, mesh);
+                        if (declaration.type == "NewExpression") {
+							var range = esprimaCalcTextAreaRange(declaration);
+                            setCursorPosition(this.textarea, range[0], range[1]);
                         }
                     }
                 }.bind(this, 'keydown'));
+				
+				// Hardcode a position statement for current Leap-selected mesh
+				Mousetrap.bind(['ctrl+y'], function () {
+					var mesh = esprimaFindLeapMeshReference();
+					if (mesh) {
+						var calls = esprimaFindPositionSetCalls(mesh.id);
+						if (calls.length > 0) {
+							// If position.set is called on the mesh's global reference, modify the last call to match Leap coordinatess.
+							var args = calls[calls.length - 1].expression.arguments;
+							var xRange = esprimaCalcTextAreaRange(args[0]);
+							var zRange = esprimaCalcTextAreaRange(args[2]);
+							var totalRange = [xRange[0], zRange[1]];
+							
+							$scope.sketch.files[0].setValueAt(totalRange, this.riftSandbox.leapPos[0] + ", " + this.riftSandbox.leapPos[1] + ", " + this.riftSandbox.leapPos[2]);
+						} else {
+							// Otherwise, add the position.set call to the code after the variable's declaration
+							var range = esprimaCalcTextAreaRange(mesh);
+							$scope.sketch.files[0].hardcodeMeshPosition(range[1], mesh.id.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
+							if (!$scope.$$phase) {
+								$scope.$apply();
+							}
+						}
+					}
+                }.bind(this, 'keydown'));
+				
             }.bind(this);
             this.bindKeyboardShortcuts();
 
@@ -508,38 +550,27 @@
 
             $scope.$watch('sketch.getCode()', function (code) {
                 this.riftSandbox.clearScene();
-                // Set plugins for bone hand rendering.
-                Leap.loopController.use('transform', {
-                    // vr: true,
-                    position: LEAP_TRANSLATE,
-                    scale: LEAP_SCALE,
-                    effectiveParent: this.riftSandbox.camera
-                });
-                Leap.loopController.use('customBoneHand', {
-                    scene: this.riftSandbox.scene,
+				
+				// Use custom bonehand rendering plugin
+				Leap.loopController.use('customBoneHand', {
+					scene: $scope.getRiftSandbox().scene,
                     arm: true,
                     render: (function () {
                         return function (timestamp) {
-                            this.riftSandbox.render()
+                            $scope.getRiftSandbox().render()
                         }
                     }).bind(this)
                 });
-
+				
                 var _sketchLoop;
                 $scope.error = null;
                 try {
                     /* jshint -W054 */
-                    this.codeHeader = '"use strict";\n' + 'var riftSketch_originalSceneAdd = scene.add;\n' + 'scene.add = function(mesh) { var err = new Error; var parts = err.stack.split("\\n", 2)[1].split(":"); mesh.riftSketch_identifier = {line:parts[parts.length - 2], column:parts[parts.length - 1]}; riftSketch_originalSceneAdd(mesh); };\n';
+                    this.codeHeader = CODE_HEADER;
                     var _sketchFunc = new Function(
                         'scene', 'camera', 'api',
                         this.codeHeader + code
                     );
-
-                    // Parse with Esprima.
-                    this.esprimaOut = esprima.parse(_sketchFunc, {
-                        loc: true,
-                        range: true
-                    });
 
                     /* jshint +W054 */
                     _sketchLoop = _sketchFunc(
@@ -547,55 +578,164 @@
                 } catch (err) {
                     $scope.error = err.toString();
                 }
+				
+				// Parse with Esprima.
+				this.esprimaOut = esprima.parse(_sketchFunc, {
+					loc: true,
+					range: true
+				});
+				
+				// Look at esprima output for debug purposes
+				console.log(this.esprimaOut);
 
                 if (_sketchLoop) {
                     this.sketchLoop = _sketchLoop;
                 }
                 localStorage.setItem('autosave', code);
             }.bind(this));
-    }]);
+	
+			var esprimaWalkForCondition = function(body, condition, stepOver) {
+				var results = [];
+				if (Object.prototype.toString.call(body) == "[object Array]") {
+					for (var i = 0; i < body.length; i++) {
+						results = results.concat(esprimaWalkForCondition(body[i], condition, stepOver));
+					}
+				} else if (condition(body)) {
+					// Condition success, push to walk results.
+					results.push(body);
+				}  else if (body.declarations) {
+					// Go through each declarator in a declarations array
+					results = results.concat(esprimaWalkForCondition(body.declarations, condition, stepOver));
+				} else if (!stepOver) {
+					// Recurse inward if stepOver flag is not set
+					if (body.init) {
+						results = results.concat(esprimaWalkForCondition(body.init, condition, stepOver));
+					} else if (body.body) {
+						results = results.concat(esprimaWalkForCondition(body.body, condition, stepOver));
+					}
+				}
+				return results;
+			}.bind(this);
+
+			var esprimaFindReturnStatement = function(body) {
+				var results = esprimaWalkForCondition(body, function (body) {
+					return body.type == "ReturnStatement";
+				}, true);
+				return results[0];
+			}.bind(this);
+
+			var esprimaFindVariableDeclaration = function(body, id) {
+				var results = esprimaWalkForCondition(body, function (body) {
+					return body.type == "VariableDeclarator" && body.id.type == "Identifier" && body.id.name == id.name;
+				});
+				return results[0].init;
+			}.bind(this);
+			
+			var esprimaFindPositionSetCalls = function(id) {
+				return esprimaWalkForCondition(this.esprimaOut.body[0].body.body, function (body) {
+					return body.type == "ExpressionStatement"
+							&& body.expression.type == "CallExpression"
+							&& body.expression.callee.type == "MemberExpression"
+							&& body.expression.callee.object.type == "MemberExpression"
+							&& body.expression.callee.object.object.type == "Identifier"
+							&& body.expression.callee.object.object.name == id.name
+							&& body.expression.callee.object.property.type == "Identifier"
+							&& body.expression.callee.object.property.name == "position"
+							&& body.expression.callee.property.type == "Identifier"
+							&& body.expression.callee.property.name == "set"
+				}, true);
+			}.bind(this);
+			
+			var esprimaFindGlobalDeclarations = function(body) {
+				var results = esprimaWalkForCondition(body[0].body.body, function (body) {
+					return body.type == "VariableDeclarator";
+				}, true);
+				return results;
+			}.bind(this);
+
+			var esprimaFindMeshesAddedToScene = function(body) {
+				return esprimaWalkForCondition(body, function (body) {
+					return body.type == "ExpressionStatement" && body.expression.type == "CallExpression" && body.expression.callee.type == "MemberExpression" && body.expression.callee.object.type == "Identifier" && body.expression.callee.object.name == "scene" && body.expression.callee.property.type == "Identifier" && body.expression.callee.property.name == "add";
+				});
+			}.bind(this);
+
+			var esprimaCalcTextAreaRange = function(body) {
+				var sketchFuncBegin = this.esprimaOut.body[0].body.body[0].range[0];
+				var rangeOffset = sketchFuncBegin + CODE_HEADER.length;
+				return [body.range[0] - rangeOffset, body.range[1] - rangeOffset];
+			}.bind(this);
+			
+			var esprimaFindLeapMesh = function() {
+				if (this.riftSandbox.leapMesh) {
+					var position = extractSceneAddPosition(this.riftSandbox.leapMesh.riftSketch_stack);
+					var results = esprimaFindMeshesAddedToScene(this.esprimaOut.body);
+					for (var i = 0; i < results.length; i++) {
+						// ignore if light
+						var name = results[i].expression.arguments[0].name;
+						if (name !== 'light') {
+							var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
+							var sketchFuncLine = results[i].loc.start.line - sketchFuncBeginLine + 1;
+							var sketchFuncColumn = results[i].loc.start.column + 1;
+							if (sketchFuncLine == position.line && sketchFuncColumn == position.column) {
+								return results[i].expression.arguments[0];
+							}
+						}
+					}
+				}
+				return null;
+			}.bind(this);
+			
+			var esprimaFindLeapMeshReference = function() {
+				if (this.riftSandbox.leapMesh) {
+					// Find line and column where the scene.add call originated in the global scope
+					var position = extractGlobalReferencePosition(this.riftSandbox.leapMesh.riftSketch_stack);
+					
+					// Iterate through esprima global assignments to find which one matches the stack trace
+					var results = esprimaFindGlobalDeclarations(this.esprimaOut.body);
+					for (var i = 0; i < results.length; i++) {
+						var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
+						var sketchFuncLine = results[i].init.loc.start.line - sketchFuncBeginLine + 1;
+						var sketchFuncColumn = results[i].init.loc.start.column + 1;
+						if (sketchFuncLine == position.line && sketchFuncColumn == position.column) {
+							return results[i];
+						}
+					}
+				}
+				return null;
+			}.bind(this);
+			
+			var extractGlobalReferencePosition = function(stack) {
+				var lines = stack.split("\n");
+				for (var i = 0; i < lines.length; i++) {
+					if (lines[i].split("@", 2)[0] == "anonymous") {
+						var parts = lines[i].split(":");
+						return {
+							line: parts[parts.length - 2],
+							column: parts[parts.length - 1],
+						};
+					}
+				}
+				return null;
+			}.bind(this);
+			
+			var extractSceneAddPosition = function(stack) {
+				var parts = stack.split("\n", 2)[1].split(":");
+				return {
+					line: parts[parts.length - 2],
+					column: parts[parts.length - 1],
+				};
+			}.bind(this);
+
+			var setCursorPosition = function(oInput, oStart, oEnd) {
+				if (oInput.setSelectionRange) {
+					oInput.setSelectionRange(oStart, oEnd);
+				} else if (oInput.createTextRange) {
+					var range = oInput.createTextRange();
+					range.collapse(true);
+					range.moveEnd('character', oEnd);
+					range.moveStart('character', oStart);
+					range.select();
+				}
+			}.bind(this);
+		}]);
 }());
-
-function esprimaWalkForCondition(body, condition) {
-    var results = [];
-    if (Object.prototype.toString.call(body) == "[object Array]") {
-        for (var i = 0; i < body.length; i++) {
-            results = results.concat(esprimaWalkForCondition(body[i], condition));
-        }
-    } else if (condition(body)) {
-        // Condition success, push to walk results.
-        results.push(body);
-    } else if (body.init) {
-        results = results.concat(esprimaWalkForCondition(body.init, condition));
-    } else if (body.body) {
-        results = results.concat(esprimaWalkForCondition(body.body, condition));
-    } else if (body.declarations) {
-        results = results.concat(esprimaWalkForCondition(body.declarations, condition));
-    }
-    return results;
-}
-
-function esprimaFindVariableDeclaration(body, id) {
-    var results = esprimaWalkForCondition(body, function (body) {
-        return body.type == "VariableDeclarator" && body.id.type == "Identifier" && body.id.name == id.name;
-    });
-    return results[0].init;
-}
-
-function esprimaFindMeshesAddedToScene(body) {
-    return esprimaWalkForCondition(body, function (body) {
-        return body.type == "ExpressionStatement" && body.expression.type == "CallExpression" && body.expression.callee.type == "MemberExpression" && body.expression.callee.object.type == "Identifier" && body.expression.callee.object.name == "scene" && body.expression.callee.property.type == "Identifier" && body.expression.callee.property.name == "add";
-    });
-}
-
-function setCursorPosition(oInput, oStart, oEnd) {
-    if (oInput.setSelectionRange) {
-        oInput.setSelectionRange(oStart, oEnd);
-    } else if (oInput.createTextRange) {
-        var range = oInput.createTextRange();
-        range.collapse(true);
-        range.moveEnd('character', oEnd);
-        range.moveStart('character', oStart);
-        range.select();
-    }
-}
