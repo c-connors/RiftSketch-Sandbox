@@ -292,39 +292,6 @@
     return handMesh = hand.data('handMesh', null);
   };
 
-  Leap.plugin('reader', function (options) {
-    return {
-      frame: function (frame) {
-        var namedObjects = options.getRiftSandbox().namedObjects;
-        for (var i = 0; i < Math.min(frame.hands.length, 1); i++) {
-          var hand = frame.hands[i];
-          for (var ii = 0; ii < 1; ii++) {
-            var minDist = -1;
-            var mesh = undefined;
-            var finger = hand.fingers[ii];
-            var pos = finger.tipPosition;
-            for (var j = 0; j < namedObjects.length; j++) {
-              var meshPos = namedObjects[j].position;
-              var dist = Math.sqrt(Math.pow(meshPos.x - pos[0], 2) + Math.pow(meshPos.y - pos[1], 2) + Math.pow(meshPos.z - pos[2], 2));
-              if (minDist < 0 || dist < minDist) {
-                minDist = dist;
-                mesh = namedObjects[j];
-              }
-            }
-			if (mesh) {
-				options.setLeapInfo("(" + mesh.position.x + ", " + mesh.position.y + ", " + mesh.position.z + ")");
-				options.getRiftSandbox().leapMesh = mesh;
-			} else {
-				options.setLeapInfo("No mesh selected.");
-				options.getRiftSandbox().leapMesh = null;
-			}
-			options.getRiftSandbox().leapPos = [pos[0], pos[1], pos[2]];
-          }
-        }
-      }
-    }
-  });
-
   Leap.plugin('customBoneHand', function (options) {
     var scale;
     if (options == null) {

@@ -42,6 +42,14 @@ var RiftSandbox = (function () {
 
     this.cameraRight = new THREE.PerspectiveCamera(75, 4/3, 0.1, 1000);
     this.cameraPivot.add( this.cameraRight );
+	
+	this.highlighterMesh = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 1.0), new THREE.MeshLambertMaterial({color: 'blue', transparent: true, opacity: 0.5}));
+	this.highlighterMesh.visible = false;
+	this.scene.add(this.highlighterMesh);
+	
+	// The mesh currently being dragged around by the user, so that their hand
+	// will not switch targets if it gets too close to another.
+	this.leapMeshLocked = null;
 
     var maxAnisotropy = this.renderer.getMaxAnisotropy();
     var groundTexture = THREE.ImageUtils.loadTexture('img/background.png');
@@ -153,7 +161,9 @@ var RiftSandbox = (function () {
 
   constr.prototype.clearScene = function () {
     for (var i = 0; i < this.sceneStuff.length; i++) {
-      this.scene.remove(this.sceneStuff[i]);
+	  if (this.sceneStuff[i].riftSketch_stack) {
+	    this.scene.remove(this.sceneStuff[i]);
+	  }
     }
     this.sceneStuff = [];
   };

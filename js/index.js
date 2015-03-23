@@ -82,7 +82,8 @@
             this.spinNumberAt(this.originalIndex, 1, offset, this.originalNumber);
         };
 		
-		// Sets a value at a particular text range
+		// Sets a value at a particular text range.
+		// Returns the range of the statement for highlighting purposes.
 		constr.prototype.setValueAt = function (
             range, value
         ) {
@@ -91,19 +92,24 @@
                 value +
                 this.contents.substring(range[1])
             );
+			return [range[0], range[0] + value.length];
         };
 		
 		
-		// Adds a statement to the code that sets a mesh's position
+		// Adds a statement to the code that sets a mesh's position.
+		// Returns the range of the statement for highlighting purposes.
         constr.prototype.hardcodeMeshPosition = function (
             index, identifier, x, y, z
         ) {
-			var newCode = ";\n" + identifier + ".position.set(" + x + ", " + y + ", " + z + ")";
+			var frontString = ";\n" + identifier + ".position.set(";
+			var midString = x + ", " + y + ", " + z;
+			var newCode = frontString + midString + ")";
             this.contents = (
                 this.contents.substring(0, index) +
 				newCode +
                 this.contents.substring(index)
             );
+			return [index + frontString.length, index + frontString.length + midString.length];
         };
 		
         return constr;
@@ -135,29 +141,6 @@
 
     var module = angular.module('index', []);
 
-    module.controller('LeapInfoController', ['$scope',
-        function ($scope) {
-            $scope.leapInfo = {
-                text: "No Mesh selected"
-            };
-            var options = {
-                getRiftSandbox: $scope.getRiftSandbox,
-                setLeapInfo: function (s) {
-                    this.leapInfo.text = s;
-                    this.$apply();
-                }.bind($scope),
-            };
-                // Set plugins for bone hand rendering.
-                Leap.loopController.use('transform', {
-                    // vr: true,
-                    position: LEAP_TRANSLATE,
-                    scale: LEAP_SCALE,
-                    effectiveParent: $scope.getRiftSandbox().camera
-                });
-
-            Leap.loopController.use('reader', options);
-    }]);
-
     module.controller('SketchController', ['$scope',
         function ($scope) {
             // TODO: lol, this controller is out of control. Refactor and maybe actually
@@ -181,6 +164,9 @@
             } else {
                 $scope.sketch = new Sketch(files);
             }
+			
+			// Initialize Leap info text.
+			$scope.leapInfoText = "No mesh selected.";
 
             // TODO: Most of this should be in a directive instead of in the controller.
             var mousePos = {
@@ -249,6 +235,49 @@
             };
 
             this.deviceManager = new DeviceManager();
+			
+			var pickLeapMesh = function (frame) {
+				var namedObjects = this.riftSandbox.namedObjects;
+				var mesh = null;
+				
+				if (frame.hands.length > 0 && frame.hands[0].fingers.length > 1) {
+					var pos = frame.hands[0].fingers[1].tipPosition;
+					this.riftSandbox.leapPos = [pos[0], pos[1], pos[2]];
+					if(this.riftSandbox.leapMeshLocked) {
+						// If a mesh is locked in, keep it as the selection.
+						mesh = this.riftSandbox.leapMeshLocked;
+					} else {
+						// Otherwise, pick the nearest one to the user's index finger.
+						var minDist = 1.5;
+						for (var j = 0; j < namedObjects.length; j++) {
+							var meshPos = namedObjects[j].position;
+							var dist = Math.sqrt(Math.pow(meshPos.x - pos[0], 2) + Math.pow(meshPos.y - pos[1], 2) + Math.pow(meshPos.z - pos[2], 2));
+							if (minDist < 0 || dist < minDist) {
+								minDist = dist;
+								mesh = namedObjects[j];
+							}
+						}
+					}
+				}
+				if (mesh) {
+					// Update mesh descriptor in interface.
+					this.riftSandbox.leapMesh = mesh;
+					$scope.leapInfoText = "position: [" + mesh.position.x + ", " + mesh.position.y + ", " + mesh.position.z + "]";
+					
+					// Highlight selected mesh by surrounding it with a blue cube.
+					this.riftSandbox.highlighterMesh.position.set(mesh.position.x, mesh.position.y, mesh.position.z);
+					this.riftSandbox.highlighterMesh.rotation.set(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z);
+					this.riftSandbox.highlighterMesh.scale.set(1.1 * mesh.scale.x, 1.1 * mesh.scale.y, 1.1 * mesh.scale.z);
+					this.riftSandbox.highlighterMesh.visible = true;
+				} else {
+					// Update mesh descriptor in interface.
+					this.riftSandbox.leapMesh = null;
+					$scope.leapInfoText = "No mesh selected.";
+
+					// Hide the blue highlighter mesh.
+					this.riftSandbox.highlighterMesh.visible = false;
+				}
+			}.bind(this);
 
             // Set LeapMotion frame loop.
             this.handStart = this.handCurrent = null;
@@ -264,6 +293,7 @@
                         offsetNumberAndKeepSelection(offset);
                     }
                 }
+				pickLeapMesh(frame);
                 this.previousFrame = frame;
             }.bind(this));
 
@@ -303,10 +333,28 @@
                 }
                 this.textarea.selectionStart = this.textarea.selectionEnd = start;
             }.bind(this);
+			
+			var setValueAndKeepSelection = function (range, value) {
+				var range = $scope.sketch.files[0].setValueAt(range, value);
+			    if (!$scope.$$phase) {
+					$scope.$apply();
+				}
+				
+				// Highlight the added statement.
+				this.textarea.selectionStart = range[0];
+				this.textarea.selectionEnd = range[1];
+			}.bind(this);
 
-            var moveCube = function (position) {
-                this.cubePosition = position;
-            }.bind(this);
+            var hardcodeMeshPositionAndKeepSelection = function (offset, name, x, y, z) {
+				var range = $scope.sketch.files[0].hardcodeMeshPosition(offset, name, x, y, z);
+			    if (!$scope.$$phase) {
+					$scope.$apply();
+				}
+				
+				// Highlight the added statement.
+				this.textarea.selectionStart = range[0];
+				this.textarea.selectionEnd = range[1];
+			}.bind(this);
 
             OAuth.initialize('bnVXi9ZBNKekF-alA1aF7PQEpsU');
             var apiCache = {};
@@ -469,41 +517,61 @@
                     return false;
                 }.bind(this), 'keyup');
 
-                // Run through Esprima to find instantiation of Mesh selected by LeapMotion.
-                Mousetrap.bind(['ctrl+m'], function () {
-					mesh = esprimaFindLeapMesh();
+                // Jump to assignment of global reference to the Mesh selected by LeapMotion.
+                Mousetrap.bind('ctrl+m', function () {
+					// Find a global reference to the mesh.
+					var mesh = esprimaFindLeapMeshReference();
 					if (mesh) {
-                        var declaration = esprimaFindVariableDeclaration(this.esprimaOut.body, mesh);
-                        if (declaration.type == "NewExpression") {
-							var range = esprimaCalcTextAreaRange(declaration);
-                            setCursorPosition(this.textarea, range[0], range[1]);
-                        }
+						var range = esprimaCalcTextAreaRange(mesh.id);
+						this.textarea.selectionStart = range[0];
+						this.textarea.selectionEnd = range[1];
                     }
                 }.bind(this, 'keydown'));
 				
-				// Hardcode a position statement for current Leap-selected mesh
-				Mousetrap.bind(['ctrl+y'], function () {
+				// Hardcode a position statement for the Mesh selected by LeapMotion.
+				Mousetrap.bind('ctrl+y', function () {
+					// Lock Leap mesh if not locked already.
+					if (!this.riftSandbox.leapMeshLocked) {
+						this.riftSandbox.leapMeshLocked = this.riftSandbox.leapMesh;
+					}
+					
+					// Move runtime mesh but do not update code yet.
+					this.riftSandbox.leapMesh.position.set(this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
+                }.bind(this), 'keydown');
+				
+				// Unlock leap mesh from the one that was being held and update code to move it.
+				Mousetrap.bind('ctrl+y', function () {
+					// Find a global reference to the mesh.
 					var mesh = esprimaFindLeapMeshReference();
 					if (mesh) {
+						// Locate any calls to mesh.position.set.
 						var calls = esprimaFindPositionSetCalls(mesh.id);
+						
 						if (calls.length > 0) {
-							// If position.set is called on the mesh's global reference, modify the last call to match Leap coordinatess.
-							var args = calls[calls.length - 1].expression.arguments;
-							var xRange = esprimaCalcTextAreaRange(args[0]);
-							var zRange = esprimaCalcTextAreaRange(args[2]);
-							var totalRange = [xRange[0], zRange[1]];
+							// If position.set is called on the mesh's global reference, modify the last call to match Leap coordinates.
 							
-							$scope.sketch.files[0].setValueAt(totalRange, this.riftSandbox.leapPos[0] + ", " + this.riftSandbox.leapPos[1] + ", " + this.riftSandbox.leapPos[2]);
+							// Find range in textarea to modify
+							var args = calls[calls.length - 1].expression.arguments;
+							var firstRange = esprimaCalcTextAreaRange(args[0]);
+							var lastRange = esprimaCalcTextAreaRange(args[args.length - 1]);
+							var totalRange = [firstRange[0], lastRange[1]];
+							
+							// Set cursor position and update code.
+							setValueAndKeepSelection(totalRange, this.riftSandbox.leapPos[0] + ", " + this.riftSandbox.leapPos[1] + ", " + this.riftSandbox.leapPos[2]);
 						} else {
-							// Otherwise, add the position.set call to the code after the variable's declaration
+							// Otherwise, add the position.set call to the code after the variable's declaration.
+							
+							// Find range in textarea to modify
 							var range = esprimaCalcTextAreaRange(mesh);
-							$scope.sketch.files[0].hardcodeMeshPosition(range[1], mesh.id.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
-							if (!$scope.$$phase) {
-								$scope.$apply();
-							}
+							
+							// Set cursor position and insert code.
+							hardcodeMeshPositionAndKeepSelection(range[1], mesh.id.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
 						}
 					}
-                }.bind(this, 'keydown'));
+					
+					// Unlock leap mesh.
+					this.riftSandbox.leapMeshLocked = null;
+                }.bind(this), 'keyup');
 				
             }.bind(this);
             this.bindKeyboardShortcuts();
@@ -551,13 +619,21 @@
             $scope.$watch('sketch.getCode()', function (code) {
                 this.riftSandbox.clearScene();
 				
+	            // Use transform plugin
+				Leap.loopController.use('transform', {
+					// vr: true,
+					position: LEAP_TRANSLATE,
+					scale: LEAP_SCALE,
+					effectiveParent: this.riftSandbox.camera
+				});
+				
 				// Use custom bonehand rendering plugin
 				Leap.loopController.use('customBoneHand', {
-					scene: $scope.getRiftSandbox().scene,
+					scene: this.riftSandbox.scene,
                     arm: true,
                     render: (function () {
                         return function (timestamp) {
-                            $scope.getRiftSandbox().render()
+                            this.riftSandbox.render()
                         }
                     }).bind(this)
                 });
@@ -584,9 +660,6 @@
 					loc: true,
 					range: true
 				});
-				
-				// Look at esprima output for debug purposes
-				console.log(this.esprimaOut);
 
                 if (_sketchLoop) {
                     this.sketchLoop = _sketchLoop;
@@ -724,18 +797,6 @@
 					line: parts[parts.length - 2],
 					column: parts[parts.length - 1],
 				};
-			}.bind(this);
-
-			var setCursorPosition = function(oInput, oStart, oEnd) {
-				if (oInput.setSelectionRange) {
-					oInput.setSelectionRange(oStart, oEnd);
-				} else if (oInput.createTextRange) {
-					var range = oInput.createTextRange();
-					range.collapse(true);
-					range.moveEnd('character', oEnd);
-					range.moveStart('character', oStart);
-					range.select();
-				}
 			}.bind(this);
 		}]);
 }());
