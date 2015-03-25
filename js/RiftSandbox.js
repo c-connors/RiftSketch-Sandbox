@@ -43,10 +43,6 @@ var RiftSandbox = (function () {
     this.cameraRight = new THREE.PerspectiveCamera(75, 4/3, 0.1, 1000);
     this.cameraPivot.add( this.cameraRight );
 	
-	this.highlighterMesh = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 1.0), new THREE.MeshLambertMaterial({color: 'blue', transparent: true, opacity: 0.5}));
-	this.highlighterMesh.visible = false;
-	this.scene.add(this.highlighterMesh);
-	
 	// The mesh currently being dragged around by the user, so that their hand
 	// will not switch targets if it gets too close to another.
 	this.leapMeshLocked = null;
@@ -65,8 +61,12 @@ var RiftSandbox = (function () {
     var oldAdd = this.scene.add;
     this.scene.add = function (obj) {
       this.sceneStuff.push(obj);
+      obj.riftSketch_stack = (new Error).stack;
       oldAdd.call(this.scene, obj);
     }.bind(this);
+	this.scene.riftSketch_addIntangible = function (obj) {
+		oldAdd.call(this.scene, obj);
+	}.bind(this);
   };
 
   constr.prototype.setCameraOffsets = function (eyeOffsetLeft, eyeOffsetRight) {

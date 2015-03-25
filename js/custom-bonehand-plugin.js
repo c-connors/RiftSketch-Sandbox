@@ -38,13 +38,13 @@
     targetEl.appendChild(renderer.domElement);
     directionalLight = new THREE.DirectionalLight(0xffffff, 1);
     directionalLight.position.set(0, 0.5, 1);
-    scope.scene.add(directionalLight);
+    scope.scene.riftSketch_addIntangible(directionalLight);
     directionalLight = new THREE.DirectionalLight(0xffffff, 1);
     directionalLight.position.set(0.5, -0.5, -1);
-    scope.scene.add(directionalLight);
+    scope.scene.riftSketch_addIntangible(directionalLight);
     directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
     directionalLight.position.set(-0.5, 0, -0.2);
-    scope.scene.add(directionalLight);
+    scope.scene.riftSketch_addIntangible(directionalLight);
     near = 1;
     far = 10000;
     if (scale) {
@@ -54,7 +54,7 @@
     scope.camera = camera = new THREE.PerspectiveCamera(45, width / height, near, far);
     camera.position.fromArray([0, 300, 500]);
     camera.lookAt(new THREE.Vector3(0, 160, 0));
-    scope.scene.add(camera);
+    scope.scene.riftSketch_addIntangible(camera);
     window.addEventListener('resize', function () {
       width = window.innerWidth;
       height = window.innerHeight;
@@ -128,16 +128,16 @@
         for (j = _j = 0; 0 <= boneCount ? _j < boneCount : _j > boneCount; j = 0 <= boneCount ? ++_j : --_j) {
           mesh = new THREE.Mesh(new THREE.SphereGeometry(jointRadius, 32, 32), material.clone());
           mesh.material.color.copy(jointColor);
-          scope.scene.add(mesh);
+          scope.scene.riftSketch_addIntangible(mesh);
           finger.push(mesh);
           mesh = new THREE.Mesh(new THREE.CylinderGeometry(boneRadius, boneRadius, 40, 32), material.clone());
           mesh.material.color.copy(boneColor);
-          scope.scene.add(mesh);
+          scope.scene.riftSketch_addIntangible(mesh);
           finger.push(mesh);
         }
         mesh = new THREE.Mesh(new THREE.SphereGeometry(jointRadius, 32, 32), material.clone());
         mesh.material.color.copy(jointColor);
-        scope.scene.add(mesh);
+        scope.scene.riftSketch_addIntangible(mesh);
         finger.push(mesh);
         this.fingerMeshes.push(finger);
       }
@@ -159,7 +159,7 @@
           this.armSpheres[i].material.color.copy(jointColor);
           this.armMesh.add(this.armSpheres[i]);
         }
-        scope.scene.add(this.armMesh);
+        scope.scene.riftSketch_addIntangible(this.armMesh);
       }
     }
 
