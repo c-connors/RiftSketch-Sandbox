@@ -245,7 +245,7 @@
 
             this.deviceManager = new DeviceManager();
 			
-			var pickLeapMesh = function (frame) {
+			var leapMeshLoop = function (frame) {
 				var namedObjects = this.riftSandbox.namedObjects;
 				var mesh = null;
 				
@@ -255,6 +255,9 @@
 					if(this.riftSandbox.leapMeshLocked) {
 						// If a mesh is locked in, keep it as the selection.
 						mesh = this.riftSandbox.leapMeshLocked;
+						
+						// Move runtime mesh but do not update code yet.
+						mesh.position.set(this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
 					} else {
 						// Otherwise, pick the nearest one to the user's index finger.
 						var minDist = 1.5;
@@ -268,6 +271,7 @@
 						}
 					}
 				}
+				
 				if (mesh) {
 					// Update mesh descriptor in interface.
 					this.riftSandbox.leapMesh = mesh;
@@ -311,7 +315,7 @@
                         offsetNumberAndKeepSelection(offset);
                     }
                 }
-				pickLeapMesh(frame);
+				leapMeshLoop(frame);
                 this.previousFrame = frame;
             }.bind(this));
 
@@ -553,66 +557,56 @@
 					}
                 }.bind(this, 'keydown'));
 				
-				// Hardcode a position statement for the Mesh selected by LeapMotion.
-				Mousetrap.bind('ctrl+y', function () {
-					debugLog("ctrl+y keydown");
-					
-					// Lock Leap mesh if not locked already.
-					if (!this.riftSandbox.leapMeshLocked) {
-						this.riftSandbox.leapMeshLocked = this.riftSandbox.leapMesh;
-					}
-					
-					if (this.riftSandbox.leapMesh) {
-						// Move runtime mesh but do not update code yet.
-						this.riftSandbox.leapMesh.position.set(this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
-					}
-                }.bind(this), 'keydown');
-				
 				// Unlock leap mesh from the one that was being held and update code to move it.
 				Mousetrap.bind('ctrl+y', function () {
-					debugLog("ctrl+y keyup");
+					debugLog("ctrl+y keypress");
 					
-					// Find a global reference to the mesh.
-					var mesh = esprimaFindLeapMeshReference();
-					debugLog("mesh:");
-					debugLog(mesh);
-					if (mesh) {
-						// Locate any calls to mesh.position.
-						var calls = esprimaFindPositionCalls(mesh.id);
-						
-						if (calls.length > 0 && calls[calls.length - 1].expression.type == "CallExpression" && calls[calls.length - 1].expression.callee.property.name == "set") {
-							// If calls to the global mesh's position exist and the last one is position.set, modify it to match Leap coordinates.
-							
-							// Find range in textarea to modify
-							var args = calls[calls.length - 1].expression.arguments;
-							var firstRange = esprimaCalcTextAreaRange(args[0]);
-							var lastRange = esprimaCalcTextAreaRange(args[args.length - 1]);
-							var totalRange = [firstRange[0], lastRange[1]];
-							
-							// Set cursor position and update code.
-							setValueAndKeepSelection(totalRange, this.riftSandbox.leapPos[0] + ", " + this.riftSandbox.leapPos[1] + ", " + this.riftSandbox.leapPos[2]);
-						} else {
-							// Otherwise, add the position.set call to the code after the last call to the global mesh's position or the variable declaration.
-							
-							// Find range in textarea to modify
-							var range;
-							if (calls.length > 0) {
-								range = esprimaCalcTextAreaRange(calls[calls.length - 1]);
-							} else {
-								range = esprimaCalcTextAreaRange(mesh);
-							}
-							
-							// Set cursor position and insert code.
-							hardcodeMeshPositionAndKeepSelection(range[1], mesh.id.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
-						}
+					// If Leap mesh is not locked, lock it.
+					if (!this.riftSandbox.leapMeshLocked) {
+						this.riftSandbox.leapMeshLocked = this.riftSandbox.leapMesh;
 					} else {
-						// Lack of coverage. Esprima could not find a reference to the mesh.
-						throw "Failed to find Leap mesh reference";
+						// Otherwise, find a global reference to the mesh and update it's code position.
+						var mesh = esprimaFindLeapMeshReference();
+						debugLog("mesh:");
+						debugLog(mesh);
+						if (mesh) {
+							// Locate any calls to mesh.position.
+							var calls = esprimaFindPositionCalls(mesh.id);
+							
+							if (calls.length > 0 && calls[calls.length - 1].expression.type == "CallExpression" && calls[calls.length - 1].expression.callee.property.name == "set") {
+								// If calls to the global mesh's position exist and the last one is position.set, modify it to match Leap coordinates.
+								
+								// Find range in textarea to modify
+								var args = calls[calls.length - 1].expression.arguments;
+								var firstRange = esprimaCalcTextAreaRange(args[0]);
+								var lastRange = esprimaCalcTextAreaRange(args[args.length - 1]);
+								var totalRange = [firstRange[0], lastRange[1]];
+								
+								// Set cursor position and update code.
+								setValueAndKeepSelection(totalRange, this.riftSandbox.leapPos[0] + ", " + this.riftSandbox.leapPos[1] + ", " + this.riftSandbox.leapPos[2]);
+							} else {
+								// Otherwise, add the position.set call to the code after the last call to the global mesh's position or the variable declaration.
+								
+								// Find range in textarea to modify
+								var range;
+								if (calls.length > 0) {
+									range = esprimaCalcTextAreaRange(calls[calls.length - 1]);
+								} else {
+									range = esprimaCalcTextAreaRange(mesh);
+								}
+								
+								// Set cursor position and insert code.
+								hardcodeMeshPositionAndKeepSelection(range[1], mesh.id.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
+							}
+						} else {
+							// Lack of coverage. Esprima could not find a reference to the mesh.
+							throw "Failed to find Leap mesh reference";
+						}
+						
+						// Unlock leap mesh.
+						this.riftSandbox.leapMeshLocked = null;
 					}
-					
-					// Unlock leap mesh.
-					this.riftSandbox.leapMeshLocked = null;
-                }.bind(this), 'keyup');
+                }.bind(this), 'keypress');
 				
             }.bind(this);
             this.bindKeyboardShortcuts();
