@@ -532,7 +532,10 @@
 						var range = esprimaCalcTextAreaRange(mesh);
 						this.textarea.selectionStart = range[0];
 						this.textarea.selectionEnd = range[1];
-                    }
+                    } else {
+						// Lack of coverage. Esprima could not find a reference to the mesh.
+						throw "Failed to find Leap mesh reference";
+					}
                 }.bind(this, 'keydown'));
 				
 				// Hardcode a position statement for the Mesh selected by LeapMotion.
@@ -553,11 +556,11 @@
 					// Find a global reference to the mesh.
 					var mesh = esprimaFindLeapMeshReference();
 					if (mesh) {
-						// Locate any calls to mesh.position.set.
-						var calls = esprimaFindPositionSetCalls(mesh.id);
+						// Locate any calls to mesh.position.
+						var calls = esprimaFindPositionCalls(mesh.id);
 						
-						if (calls.length > 0) {
-							// If position.set is called on the mesh's global reference, modify the last call to match Leap coordinates.
+						if (calls.length > 0 && calls[calls.length - 1].expression.type == "CallExpression" && calls[calls.length - 1].expression.callee.property.name == "set") {
+							// If calls to the global mesh's position exist and the last one is position.set, modify it to match Leap coordinates.
 							
 							// Find range in textarea to modify
 							var args = calls[calls.length - 1].expression.arguments;
@@ -568,14 +571,22 @@
 							// Set cursor position and update code.
 							setValueAndKeepSelection(totalRange, this.riftSandbox.leapPos[0] + ", " + this.riftSandbox.leapPos[1] + ", " + this.riftSandbox.leapPos[2]);
 						} else {
-							// Otherwise, add the position.set call to the code after the variable's declaration.
+							// Otherwise, add the position.set call to the code after the last call to the global mesh's position or the variable declaration.
 							
 							// Find range in textarea to modify
-							var range = esprimaCalcTextAreaRange(mesh);
+							var range;
+							if (calls.length > 0) {
+								range = esprimaCalcTextAreaRange(calls[calls.length - 1]);
+							} else {
+								range = esprimaCalcTextAreaRange(mesh);
+							}
 							
 							// Set cursor position and insert code.
 							hardcodeMeshPositionAndKeepSelection(range[1], mesh.id.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
 						}
+					} else {
+						// Lack of coverage. Esprima could not find a reference to the mesh.
+						throw "Failed to find Leap mesh reference";
 					}
 					
 					// Unlock leap mesh.
@@ -713,18 +724,24 @@
 				return results[0].init;
 			}.bind(this);
 			
-			var esprimaFindPositionSetCalls = function(id) {
+			var esprimaFindPositionCalls = function(id) {
+				console.log(this.esprimaOut);
 				return esprimaWalkForCondition(this.esprimaOut.body[0].body.body, function (body) {
-					return body.type == "ExpressionStatement"
-							&& body.expression.type == "CallExpression"
-							&& body.expression.callee.type == "MemberExpression"
-							&& body.expression.callee.object.type == "MemberExpression"
-							&& body.expression.callee.object.object.type == "Identifier"
-							&& body.expression.callee.object.object.name == id.name
-							&& body.expression.callee.object.property.type == "Identifier"
-							&& body.expression.callee.object.property.name == "position"
-							&& body.expression.callee.property.type == "Identifier"
-							&& body.expression.callee.property.name == "set"
+					return body.type == "ExpressionStatement" &&
+								((body.expression.type == "CallExpression"
+								&& body.expression.callee.type == "MemberExpression"
+								&& body.expression.callee.object.type == "MemberExpression"
+								&& body.expression.callee.object.object.type == "Identifier"
+								&& body.expression.callee.object.object.name == id.name
+								&& body.expression.callee.object.property.type == "Identifier"
+								&& body.expression.callee.object.property.name == "position")
+								|| (body.expression.type == "AssignmentExpression"
+								&& body.expression.left.type == "MemberExpression"
+								&& body.expression.left.object.type == "MemberExpression"
+								&& body.expression.left.object.object.type == "Identifier"
+								&& body.expression.left.object.object.name == id.name
+								&& body.expression.left.object.property.type == "Identifier"
+								&& body.expression.left.object.property.name == "position"));
 				}, true);
 			}.bind(this);
 			
@@ -787,7 +804,6 @@
 							}
 						}
 					}
-					throw "Failed to find Leap mesh reference";
 				}
 				return null;
 			}.bind(this);
