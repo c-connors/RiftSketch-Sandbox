@@ -273,15 +273,19 @@
 				}
 				
 				if (mesh) {
-					// Update mesh descriptor in interface.
+					// Update mesh descriptor in interface and mesh reference.
+					if (mesh != this.riftSandbox.leapMesh) {
+						this.riftSandbox.leapMeshReference = esprimaFindMeshReference(mesh);
+						if (this.riftSandbox.highlighterMesh) {
+							this.riftSandbox.scene.remove(this.riftSandbox.highlighterMesh);
+						}
+						this.riftSandbox.highlighterMesh = new THREE.Mesh(mesh.geometry, new THREE.MeshLambertMaterial({color: this.riftSandbox.leapMeshReference ? 'blue' : 'red', transparent: true, opacity: 0.5}));
+						this.riftSandbox.scene.riftSketch_addIntangible(this.riftSandbox.highlighterMesh);
+					}
 					this.riftSandbox.leapMesh = mesh;
 					this.setLeapInfoText("position: [" + mesh.position.x + ", " + mesh.position.y + ", " + mesh.position.z + "]");
 					
-					// Highlight selected mesh by surrounding it with a blue mesh.
-					if (!this.riftSandbox.highlighterMesh) {
-						this.riftSandbox.highlighterMesh = new THREE.Mesh(mesh.geometry, new THREE.MeshLambertMaterial({color: 'blue', transparent: true, opacity: 0.5}));
-						this.riftSandbox.scene.riftSketch_addIntangible(this.riftSandbox.highlighterMesh);
-					}
+					// Highlight selected mesh by surrounding it with a mesh (blue if reference found, red if not).
 					this.riftSandbox.highlighterMesh.position.set(mesh.position.x, mesh.position.y, mesh.position.z);
 					this.riftSandbox.highlighterMesh.rotation.set(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z);
 					this.riftSandbox.highlighterMesh.scale.set(1.1 * mesh.scale.x, 1.1 * mesh.scale.y, 1.1 * mesh.scale.z);
@@ -545,33 +549,25 @@
 
                 // Jump to assignment of global reference to the Mesh selected by LeapMotion.
                 Mousetrap.bind('ctrl+m', function () {
-					// Find a global reference to the mesh.
-					var mesh = esprimaFindLeapMeshReference();
-					if (mesh) {
+					if (this.riftSandbox.leapMeshReference) {
 						var range = esprimaCalcTextAreaRange(mesh);
 						this.textarea.selectionStart = range[0];
 						this.textarea.selectionEnd = range[1];
-                    } else {
-						// Lack of coverage. Esprima could not find a reference to the mesh.
-						throw "Failed to find Leap mesh reference";
-					}
+                    }
                 }.bind(this, 'keydown'));
 				
 				// Unlock leap mesh from the one that was being held and update code to move it.
 				Mousetrap.bind('ctrl+y', function () {
-					debugLog("ctrl+y keypress");
-					
-					// If Leap mesh is not locked, lock it.
+					// If Leap mesh is not locked, lock it if its reference was found.
 					if (!this.riftSandbox.leapMeshLocked) {
-						this.riftSandbox.leapMeshLocked = this.riftSandbox.leapMesh;
+						if (this.riftSandbox.leapMeshReference) {
+							this.riftSandbox.leapMeshLocked = this.riftSandbox.leapMesh;
+						}
 					} else {
 						// Otherwise, find a global reference to the mesh and update it's code position.
-						var mesh = esprimaFindLeapMeshReference();
-						debugLog("mesh:");
-						debugLog(mesh);
-						if (mesh) {
+						if (this.riftSandbox.leapMeshReference) {
 							// Locate any calls to mesh.position.
-							var calls = esprimaFindPositionCalls(mesh.id);
+							var calls = esprimaFindPositionCalls(this.riftSandbox.leapMeshReference.id);
 							
 							if (calls.length > 0 && calls[calls.length - 1].expression.type == "CallExpression" && calls[calls.length - 1].expression.callee.property.name == "set") {
 								// If calls to the global mesh's position exist and the last one is position.set, modify it to match Leap coordinates.
@@ -592,11 +588,11 @@
 								if (calls.length > 0) {
 									range = esprimaCalcTextAreaRange(calls[calls.length - 1]);
 								} else {
-									range = esprimaCalcTextAreaRange(mesh);
+									range = esprimaCalcTextAreaRange(this.riftSandbox.leapMeshReference);
 								}
 								
 								// Set cursor position and insert code.
-								hardcodeMeshPositionAndKeepSelection(range[1], mesh.id.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
+								hardcodeMeshPositionAndKeepSelection(range[1], this.riftSandbox.leapMeshReference.id.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
 							}
 						} else {
 							// Lack of coverage. Esprima could not find a reference to the mesh.
@@ -784,38 +780,36 @@
 				return [body.range[0] - rangeOffset, body.range[1] - rangeOffset];
 			}.bind(this);
 			
-			var esprimaFindLeapMeshReference = function() {
-				if (this.riftSandbox.leapMesh) {
-					// Find line and column where the scene.add call originated in the global scope.
-					var addPosition = extractSceneAddPosition(this.riftSandbox.leapMesh.riftSketch_stack);
-					var position = extractGlobalReferencePosition(this.riftSandbox.leapMesh.riftSketch_stack);
-					if (addPosition.line == position.line && addPosition.column == position.column) {
-						// If scene.add was called in the global scope, iterate through esprima global scene.add calls to find which one matches the stack trace.
-						var results = esprimaFindGlobalSceneAddCalls();
-						for (var i = 0; i < results.length; i++) {
-							var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
-							var sketchFuncLine = results[i].loc.start.line - sketchFuncBeginLine + 1;
-							var sketchFuncColumn = results[i].loc.start.column + 1;
-							if (sketchFuncLine == position.line && sketchFuncColumn == position.column) {
-								// Correct scene.add call, search for the declaration of the mesh.
-								var declarations = esprimaFindGlobalDeclarations();
-								for (var ii = 0; ii < declarations.length; ii++) {
-									if (declarations[ii].id.name == results[i].expression.arguments[0].name) {
-										return declarations[ii];
-									}
+			var esprimaFindMeshReference = function(mesh) {
+				// Find line and column where the scene.add call originated in the global scope.
+				var addPosition = extractSceneAddPosition(mesh.riftSketch_stack);
+				var position = extractGlobalReferencePosition(mesh.riftSketch_stack);
+				if (addPosition.line == position.line && addPosition.column == position.column) {
+					// If scene.add was called in the global scope, iterate through esprima global scene.add calls to find which one matches the stack trace.
+					var results = esprimaFindGlobalSceneAddCalls();
+					for (var i = 0; i < results.length; i++) {
+						var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
+						var sketchFuncLine = results[i].loc.start.line - sketchFuncBeginLine + 1;
+						var sketchFuncColumn = results[i].loc.start.column + 1;
+						if (sketchFuncLine == position.line && sketchFuncColumn == position.column) {
+							// Correct scene.add call, search for the declaration of the mesh.
+							var declarations = esprimaFindGlobalDeclarations();
+							for (var ii = 0; ii < declarations.length; ii++) {
+								if (declarations[ii].id.name == results[i].expression.arguments[0].name) {
+									return declarations[ii];
 								}
 							}
 						}
-					} else {
-						// Otherwise, iterate through esprima global assignments to find which one matches the stack trace.
-						var declarations = esprimaFindGlobalDeclarations();
-						for (var i = 0; i < declarations.length; i++) {
-							var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
-							var sketchFuncLine = declarations[i].init.loc.start.line - sketchFuncBeginLine + 1;
-							var sketchFuncColumn = declarations[i].init.loc.start.column + 1;
-							if (sketchFuncLine == position.line && sketchFuncColumn == position.column) {
-								return declarations[i];
-							}
+					}
+				} else {
+					// Otherwise, iterate through esprima global assignments to find which one matches the stack trace.
+					var declarations = esprimaFindGlobalDeclarations();
+					for (var i = 0; i < declarations.length; i++) {
+						var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
+						var sketchFuncLine = declarations[i].init.loc.start.line - sketchFuncBeginLine + 1;
+						var sketchFuncColumn = declarations[i].init.loc.start.column + 1;
+						if (sketchFuncLine == position.line && sketchFuncColumn == position.column) {
+							return declarations[i];
 						}
 					}
 				}
