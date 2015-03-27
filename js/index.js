@@ -95,11 +95,13 @@
 		constr.prototype.setValueAt = function (
             range, value
         ) {
+			debugLog("constr.prototype.setValueAt");		
             this.contents = (
                 this.contents.substring(0, range[0]) +
                 value +
                 this.contents.substring(range[1])
             );
+			debugLog(this.contents);
 			return [range[0], range[0] + value.length];
         };
 		
@@ -109,6 +111,7 @@
         constr.prototype.hardcodeMeshPosition = function (
             index, identifier, x, y, z
         ) {
+			debugLog("constr.prototype.hardcodeMeshPosition");
 			var frontString = ";\n" + identifier + ".position.set(";
 			var midString = x + ", " + y + ", " + z;
 			var newCode = frontString + midString + ")";
@@ -117,6 +120,7 @@
 				newCode +
                 this.contents.substring(index)
             );
+			debugLog(this.contents);
 			return [index + frontString.length, index + frontString.length + midString.length];
         };
 		
@@ -362,7 +366,7 @@
 			}.bind(this);
 
             var hardcodeMeshPositionAndKeepSelection = function (offset, name, x, y, z) {
-				debugLog("setValueAndKeepSelection");
+				debugLog("hardcodeMeshPositionAndKeepSelection");
 			
 				var range = $scope.sketch.files[0].hardcodeMeshPosition(offset, name, x, y, z);
 			    if (!$scope.$$phase) {
@@ -551,6 +555,8 @@
 				
 				// Hardcode a position statement for the Mesh selected by LeapMotion.
 				Mousetrap.bind('ctrl+y', function () {
+					debugLog("ctrl+y keydown");
+					
 					// Lock Leap mesh if not locked already.
 					if (!this.riftSandbox.leapMeshLocked) {
 						this.riftSandbox.leapMeshLocked = this.riftSandbox.leapMesh;
@@ -564,8 +570,12 @@
 				
 				// Unlock leap mesh from the one that was being held and update code to move it.
 				Mousetrap.bind('ctrl+y', function () {
+					debugLog("ctrl+y keyup");
+					
 					// Find a global reference to the mesh.
 					var mesh = esprimaFindLeapMeshReference();
+					debugLog("mesh:");
+					debugLog(mesh);
 					if (mesh) {
 						// Locate any calls to mesh.position.
 						var calls = esprimaFindPositionCalls(mesh.id);
