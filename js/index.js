@@ -6,6 +6,13 @@
     const LEAP_TRANSLATE = new THREE.Vector3(0, -1.6, -3.2);
 	const CODE_HEADER = '"use strict";\n';
 	const ROUND_FACTOR = 10;
+	const DEBUG = false;
+	
+	function debugLog(s) {
+		if (DEBUG) {
+			console.log(s);
+		}
+	}
 
     var File = (function () {
         var constr = function (name, contents) {
@@ -342,6 +349,8 @@
             }.bind(this);
 			
 			var setValueAndKeepSelection = function (range, value) {
+				debugLog("setValueAndKeepSelection");
+				
 				var range = $scope.sketch.files[0].setValueAt(range, value);
 			    if (!$scope.$$phase) {
 					$scope.$apply();
@@ -353,6 +362,8 @@
 			}.bind(this);
 
             var hardcodeMeshPositionAndKeepSelection = function (offset, name, x, y, z) {
+				debugLog("setValueAndKeepSelection");
+			
 				var range = $scope.sketch.files[0].hardcodeMeshPosition(offset, name, x, y, z);
 			    if (!$scope.$$phase) {
 					$scope.$apply();
@@ -725,7 +736,6 @@
 			}.bind(this);
 			
 			var esprimaFindPositionCalls = function(id) {
-				console.log(this.esprimaOut);
 				return esprimaWalkForCondition(this.esprimaOut.body[0].body.body, function (body) {
 					return body.type == "ExpressionStatement" &&
 								((body.expression.type == "CallExpression"
