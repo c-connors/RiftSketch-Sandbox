@@ -218,7 +218,6 @@
                 }
 
                 // Pick out the objects the user cares about (that is, that the user has named)
-                //console.log("number of things in scene: " + this.riftSandbox.sceneStuff.length);
                 var namedObjects = [];
                 for (var i = 0; i < this.riftSandbox.sceneStuff.length; i++) {
                     if (this.riftSandbox.sceneStuff[i].name) {
@@ -227,7 +226,6 @@
                 }
 
                 this.riftSandbox.namedObjects = namedObjects;
-                //console.log("There are " + this.riftSandbox.namedObjects.length + " named objects");
 
                 try {
                     this.sketchLoop();
@@ -275,7 +273,7 @@
 				if (mesh) {
 					// Update mesh descriptor in interface and mesh reference.
 					if (mesh != this.riftSandbox.leapMesh) {
-						this.riftSandbox.leapMeshReference = esprimaFindMeshReference(mesh);
+						this.riftSandbox.leapMeshReference = esprimaFindMeshReference(mesh, 0);
 						if (this.riftSandbox.highlighterMesh) {
 							this.riftSandbox.scene.remove(this.riftSandbox.highlighterMesh);
 						}
@@ -567,13 +565,13 @@
 						// Otherwise, find a global reference to the mesh and update it's code position.
 						if (this.riftSandbox.leapMeshReference) {
 							// Locate any calls to mesh.position.
-							var calls = esprimaFindPositionCalls(this.riftSandbox.leapMeshReference.id);
+							var calls = esprimaFindPositionCalls(this.riftSandbox.leapMeshReference);
 							
-							if (calls.length > 0 && calls[calls.length - 1].expression.type == "CallExpression" && calls[calls.length - 1].expression.callee.property.name == "set") {
+							if (calls.length > 0 && calls[calls.length - 1].type == "CallExpression" && calls[calls.length - 1].callee.property.name == "set") {
 								// If calls to the global mesh's position exist and the last one is position.set, modify it to match Leap coordinates.
 								
 								// Find range in textarea to modify
-								var args = calls[calls.length - 1].expression.arguments;
+								var args = calls[calls.length - 1].arguments;
 								var firstRange = esprimaCalcTextAreaRange(args[0]);
 								var lastRange = esprimaCalcTextAreaRange(args[args.length - 1]);
 								var totalRange = [firstRange[0], lastRange[1]];
@@ -592,10 +590,11 @@
 								}
 								
 								// Set cursor position and insert code.
-								hardcodeMeshPositionAndKeepSelection(range[1], this.riftSandbox.leapMeshReference.id.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
+								hardcodeMeshPositionAndKeepSelection(range[1], this.riftSandbox.leapMeshReference.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
 							}
 						} else {
-							// Lack of coverage. Esprima could not find a reference to the mesh.
+							// Reference was somehow lost between grabbing and releasing the mesh. This should not happen
+							// but may occur if code is updated between the two events.
 							throw "Failed to find Leap mesh reference";
 						}
 						
@@ -691,6 +690,7 @@
 					loc: true,
 					range: true
 				});
+				console.log(this.esprimaOut);
 
                 if (_sketchLoop) {
                     this.sketchLoop = _sketchLoop;
@@ -701,23 +701,39 @@
 			var esprimaWalkForCondition = function(body, condition, stepOver) {
 				var results = [];
 				if (Object.prototype.toString.call(body) == "[object Array]") {
+					// If node is an array, recurse on each element.
 					for (var i = 0; i < body.length; i++) {
 						results = results.concat(esprimaWalkForCondition(body[i], condition, stepOver));
 					}
-				} else if (condition(body)) {
-					// Condition success, push to walk results.
-					results.push(body);
-				}  else if (body.declarations) {
-					// Go through each declarator in a declarations array
+				}  else if (body.type == "VariableDeclaration" && body.declarations) {
+					// If node is a declarations array, recurse on each declarator.
 					results = results.concat(esprimaWalkForCondition(body.declarations, condition, stepOver));
-				} else if (!stepOver) {
-					// Recurse inward if stepOver flag is not set
-					if (body.init) {
-						results = results.concat(esprimaWalkForCondition(body.init, condition, stepOver));
-					} else if (body.body) {
-						results = results.concat(esprimaWalkForCondition(body.body, condition, stepOver));
+				} else if (body.type == "ExpressionStatement" && body.expression) {
+					// If node is a expression statement, recurse on the expression.
+					results = results.concat(esprimaWalkForCondition(body.expression, condition, stepOver));
+				} else if (condition(body)) {
+					// If the condition succeeds, add to results.
+					results.push(body);
+				}
+				
+				// Additionally, check inward recursion.
+				if (!stepOver) {
+					var expr = null;
+					if (body.type == "VariableDeclarator" && body.init) {
+						expr = body.init;
+					} else if (body.type == "AssignmentExpression" && body.right) {
+						expr = body.right;
+					}
+					if (expr
+							&& expr.type == "FunctionExpression"
+							&& expr.body
+							&& expr.body.type == "BlockStatement"
+							&& expr.body.body) {
+						// Recurse into functions if stepOver flag is not set
+						results = results.concat(esprimaWalkForCondition(body.init.body.body, condition, stepOver));
 					}
 				}
+				
 				return results;
 			}.bind(this);
 
@@ -737,40 +753,56 @@
 			
 			var esprimaFindPositionCalls = function(id) {
 				return esprimaWalkForCondition(this.esprimaOut.body[0].body.body, function (body) {
-					return body.type == "ExpressionStatement" &&
-								((body.expression.type == "CallExpression"
-								&& body.expression.callee.type == "MemberExpression"
-								&& body.expression.callee.object.type == "MemberExpression"
-								&& body.expression.callee.object.object.type == "Identifier"
-								&& body.expression.callee.object.object.name == id.name
-								&& body.expression.callee.object.property.type == "Identifier"
-								&& body.expression.callee.object.property.name == "position")
-								|| (body.expression.type == "AssignmentExpression"
-								&& body.expression.left.type == "MemberExpression"
-								&& body.expression.left.object.type == "MemberExpression"
-								&& body.expression.left.object.object.type == "Identifier"
-								&& body.expression.left.object.object.name == id.name
-								&& body.expression.left.object.property.type == "Identifier"
-								&& body.expression.left.object.property.name == "position"));
+					return (body.type == "CallExpression"
+							&& body.callee.type == "MemberExpression"
+							&& body.callee.object.type == "MemberExpression"
+							&& body.callee.object.object.type == "Identifier"
+							&& body.callee.object.object.name == id.name
+							&& body.callee.object.property.type == "Identifier"
+							&& body.callee.object.property.name == "position")
+							|| (body.type == "AssignmentExpression"
+							&& body.left.type == "MemberExpression"
+							&& body.left.object.type == "MemberExpression"
+							&& body.left.object.object.type == "Identifier"
+							&& body.left.object.object.name == id.name
+							&& body.left.object.property.type == "Identifier"
+							&& body.left.object.property.name == "position");
 				}, true);
 			}.bind(this);
 			
 			var esprimaFindGlobalDeclarations = function() {
-				var results = esprimaWalkForCondition(this.esprimaOut.body[0].body.body, function (body) {
+				return esprimaFindDeclarations(this.esprimaOut.body[0].body.body);
+			}.bind(this);
+			
+			var esprimaFindDeclarations = function(body) {
+				var results = esprimaWalkForCondition(body, function (body) {
 					return body.type == "VariableDeclarator";
 				}, true);
 				return results;
 			}.bind(this);
+			
+			var esprimaFindAllSceneAddCalls = function() {
+				return esprimaWalkForCondition(this.esprimaOut.body[0].body.body, function (body) {
+					return body.type == "CallExpression"
+							&& body.callee
+							&& body.callee.type == "MemberExpression"
+							&& body.callee.object
+							&& body.callee.object.type == "Identifier"
+							&& body.callee.object.name == "scene"
+							&& body.callee.property
+							&& body.callee.property.type == "Identifier"
+							&& body.callee.property.name == "add";
+				});
+			}.bind(this);
 
 			var esprimaFindGlobalSceneAddCalls = function() {
 				return esprimaWalkForCondition(this.esprimaOut.body[0].body.body, function (body) {
-					return body.type == "ExpressionStatement"
-							&& body.expression.type == "CallExpression"
-							&& body.expression.callee.type == "MemberExpression"
-							&& body.expression.callee.object.type == "Identifier"
-							&& body.expression.callee.object.name == "scene"
-							&& body.expression.callee.property.type == "Identifier"
-							&& body.expression.callee.property.name == "add";
+					return body.type == "CallExpression"
+							&& body.callee.type == "MemberExpression"
+							&& body.callee.object.type == "Identifier"
+							&& body.callee.object.name == "scene"
+							&& body.callee.property.type == "Identifier"
+							&& body.callee.property.name == "add";
 				}, true);
 			}.bind(this);
 
@@ -780,42 +812,180 @@
 				return [body.range[0] - rangeOffset, body.range[1] - rangeOffset];
 			}.bind(this);
 			
-			var esprimaFindMeshReference = function(mesh) {
+			// Recursively attempts to find a valid reference to the runtime mesh argument. The stackRecursion argument
+			// details how far outward in the call stack the algorithm is. It should start at zero to examine the call to scene.add.
+			var esprimaFindMeshReference = function(mesh, stackRecursion) {
 				// Find line and column where the scene.add call originated in the global scope.
 				var addPosition = extractSceneAddPosition(mesh.riftSketch_stack);
-				var position = extractGlobalReferencePosition(mesh.riftSketch_stack);
-				if (addPosition.line == position.line && addPosition.column == position.column) {
+				var globalPosition = extractGlobalReferencePosition(mesh.riftSketch_stack);
+				if (addPosition.line == globalPosition.line && addPosition.column == globalPosition.column) {
 					// If scene.add was called in the global scope, iterate through esprima global scene.add calls to find which one matches the stack trace.
 					var results = esprimaFindGlobalSceneAddCalls();
 					for (var i = 0; i < results.length; i++) {
 						var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
 						var sketchFuncLine = results[i].loc.start.line - sketchFuncBeginLine + 1;
 						var sketchFuncColumn = results[i].loc.start.column + 1;
-						if (sketchFuncLine == position.line && sketchFuncColumn == position.column) {
+						if (sketchFuncLine == globalPosition.line && sketchFuncColumn == globalPosition.column) {
 							// Correct scene.add call, search for the declaration of the mesh.
 							var declarations = esprimaFindGlobalDeclarations();
 							for (var ii = 0; ii < declarations.length; ii++) {
-								if (declarations[ii].id.name == results[i].expression.arguments[0].name) {
+								if (declarations[ii].id.name == results[i].arguments[0].name) {
 									return declarations[ii];
 								}
 							}
 						}
 					}
 				} else {
-					// Otherwise, iterate through esprima global assignments to find which one matches the stack trace.
-					var declarations = esprimaFindGlobalDeclarations();
-					for (var i = 0; i < declarations.length; i++) {
-						var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
-						var sketchFuncLine = declarations[i].init.loc.start.line - sketchFuncBeginLine + 1;
-						var sketchFuncColumn = declarations[i].init.loc.start.column + 1;
-						if (sketchFuncLine == position.line && sketchFuncColumn == position.column) {
-							return declarations[i];
+					var stackPosition = extractStackReferencePosition(mesh.riftSketch_stack, stackRecursion + 1);
+					var reference;
+					
+					// Find variable of interest.
+					if (stackRecursion == 0) {
+						// Special case for top level scene.add since the variable of interest is an argument rather than an assignment.
+						var results = esprimaFindAllSceneAddCalls();
+						for (var i = 0; i < results.length; i++) {
+							var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
+							var sketchFuncLine = results[i].loc.start.line - sketchFuncBeginLine + 1;
+							var sketchFuncColumn = results[i].loc.start.column + 1;
+							if (sketchFuncLine == stackPosition.line && sketchFuncColumn == stackPosition.column) {
+								reference = results[i].arguments[0];
+								break;
+							}
+						}
+					} else {
+						var assignment = esprimaFindVariableAssignment(stackPosition);
+						if (!assignment) {
+							// Return value was not assigned and mesh is inaccessible.
+							return null;
+						}
+						if(assignment.type == "AssignmentExpression" && assignment.left) {
+							reference = assignment.left;
+						} else if (assignment.type == "VariableDeclarator" && assignment.id) {
+							reference = assignment.id;
+						}
+					}
+					
+					if (stackPosition.line == globalPosition.line && stackPosition.column == globalPosition.column) {
+						// If we are at global scope, return the reference.
+						return reference;
+					} else {
+						// Otherwise, check if reference was returned from the function.
+						var scope = esprimaFindFunctionDefinition(reference.range);
+						var body;
+						if (scope.init && scope.init.body && scope.init.body.body) {
+							body = scope.init.body.body;
+						} else if (scope.right && scope.right.body && scope.right.body.body) {
+							body = scope.right.body.body;
+						}
+						if (esprimaEvaluateFunctionReturnValiditity(body, reference)) {
+							// If so, scope out and continue search.
+							return esprimaFindMeshReference(mesh, stackRecursion + 1);
 						}
 					}
 				}
 				return null;
 			}.bind(this);
 			
+			// Gets an array of all statements inside the body argument that use the identifier of reference,
+			// minus those that may not be valid do to reassignment.
+			var esprimaFindValidReferenceStatements = function(body, reference) {
+				return esprimaWalkForCondition(body, function(body) {
+					var expr = null;
+					if (body.type == "AssignmentExpression") {
+						expr = body.left;
+					} else if (body.type == "VariableDeclarator") {
+						expr = body.id;
+					}
+					return (expr
+							&& expr.type == "Identifier"
+							&& expr.name == reference.name)
+							|| (body.type == "ReturnStatement"
+							&& body.argument.name == reference.name);
+				}, true);
+			}
+			
+			// Returns true if the body argument, the body of a function, returns the reference
+			// and that reference has not encountered any calls that may have reassigned it
+			// between its use in the reference argument and the return statement.
+			var esprimaEvaluateFunctionReturnValiditity = function(body, reference) {
+				var calls = esprimaFindValidReferenceStatements(body, reference);
+				for (var i = 0; i < calls.length; i++) {
+					if (calls[i].range[0] < reference.range[0]) {
+						// Function returns before reference is used.
+						if (calls[i].type == "ReturnStatement") {
+							return false;
+						}
+					} else {
+						// Reference is reassigned between its use in reference argment and the return statement,
+						// function is not valid for returning the reference.
+						if (calls[i].type == "AssignmentStatement") {
+							return false;
+						}
+						// Reference properly returned after its use in reference argument.
+						if (calls[i].type == "ReturnStatement") {
+							return true;
+						}
+					}
+				}
+				return false;
+			}.bind(this);
+			
+			// Returns the esprima node of the variable assignment found at stackPosition.
+			var esprimaFindVariableAssignment = function(stackPosition) {
+				var assignments = esprimaFindAllVariableAssignments();
+				for (var i = 0; i < assignments.length; i++) {
+					var expr;
+					if (assignments[i].type == "AssignmentExpression" && assignments[i].right) {
+						expr = assignments[i].right;
+					} else if (assignments[i].type == "VariableDeclarator" && assignments[i].init) {
+						expr = assignments[i].init;
+					}
+					var sketchFuncBeginLine = this.esprimaOut.body[0].body.body[0].loc.start.line;
+					var sketchFuncLine = expr.loc.start.line - sketchFuncBeginLine + 1;
+					var sketchFuncColumn = expr.loc.start.column + 1;
+					if (sketchFuncLine == stackPosition.line && sketchFuncColumn == stackPosition.column) {
+						return assignments[i];
+					}
+				}
+				return null;
+			}.bind(this);
+			
+			// Returns an array of all esprima nodes where variables are assigned.
+			var esprimaFindAllVariableAssignments = function() {
+				var results = esprimaWalkForCondition(this.esprimaOut.body[0].body.body, function (body) {
+					return body.type == "AssignmentExpression"
+							|| body.type == "VariableDeclarator";
+				});
+				return results;
+			}.bind(this);
+			
+			// Returns the esprima node of the function definition within which the range argument falls.
+			var esprimaFindFunctionDefinition = function(range) {
+				var definitions = esprimaFindAllFunctionDefinitions();
+				for (var i = 0; i < definitions.length; i++) {
+					if (definitions[i].range[0] < range[0] && definitions[i].range[1] > range[1]) {
+						return definitions[i];
+					}
+				}
+				return null;
+			}.bind(this);
+			
+			// Returns an array of all esprima nodes where functions are defined.
+			var esprimaFindAllFunctionDefinitions = function() {
+				var results = esprimaWalkForCondition(this.esprimaOut.body[0].body.body, function (body) {
+					return (body.type == "AssignmentExpression"
+							&& body.right
+							&& (body.right.type == "FunctionDeclaration"
+							|| body.right.type == "FunctionExpression"))
+							|| (body.type == "VariableDeclarator"
+							&& body.init
+							&& (body.init.type == "FunctionDeclaration"
+							|| body.init.type == "FunctionExpression"));
+				});
+				return results;
+			}.bind(this);
+			
+			// Returns the position of the global call in the stack provided.
 			var extractGlobalReferencePosition = function(stack) {
 				var lines = stack.split("\n");
 				for (var i = 0; i < lines.length; i++) {
@@ -830,12 +1000,23 @@
 				return null;
 			}.bind(this);
 			
+			// Returns the position where the call to scene.add should occur in the stack provided.
 			var extractSceneAddPosition = function(stack) {
-				var parts = stack.split("\n", 2)[1].split(":");
-				return {
-					line: parts[parts.length - 2],
-					column: parts[parts.length - 1],
-				};
+				return extractStackReferencePosition(stack, 1);
+			}.bind(this);
+			
+			// Returns the idx'th call from the top in the stack. Index 1 should be to scene.add.
+			var extractStackReferencePosition = function(stack, idx) {
+				var lines = stack.split("\n");
+				// Ensure the call is within bounds of the stack and within the scope of the user's code.
+				if (idx < lines.length) {
+					var parts = lines[idx].split(":");
+					return {
+						line: parts[parts.length - 2],
+						column: parts[parts.length - 1],
+					};
+				}
+				return null;
 			}.bind(this);
 		}]);
 }());
