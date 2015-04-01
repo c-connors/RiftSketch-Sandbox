@@ -95,13 +95,11 @@
 		constr.prototype.setValueAt = function (
             range, value
         ) {
-			debugLog("constr.prototype.setValueAt");		
             this.contents = (
                 this.contents.substring(0, range[0]) +
                 value +
                 this.contents.substring(range[1])
             );
-			debugLog(this.contents);
 			return [range[0], range[0] + value.length];
         };
 		
@@ -111,7 +109,6 @@
         constr.prototype.hardcodeMeshPosition = function (
             index, identifier, x, y, z
         ) {
-			debugLog("constr.prototype.hardcodeMeshPosition");
 			var frontString = ";\n" + identifier + ".position.set(";
 			var midString = x + ", " + y + ", " + z;
 			var newCode = frontString + midString + ")";
@@ -120,7 +117,6 @@
 				newCode +
                 this.contents.substring(index)
             );
-			debugLog(this.contents);
 			return [index + frontString.length, index + frontString.length + midString.length];
         };
 		
@@ -359,8 +355,6 @@
             }.bind(this);
 			
 			var setValueAndKeepSelection = function (range, value) {
-				debugLog("setValueAndKeepSelection");
-				
 				var range = $scope.sketch.files[0].setValueAt(range, value);
 			    if (!$scope.$$phase) {
 					$scope.$apply();
@@ -372,8 +366,6 @@
 			}.bind(this);
 
             var hardcodeMeshPositionAndKeepSelection = function (offset, name, x, y, z) {
-				debugLog("hardcodeMeshPositionAndKeepSelection");
-			
 				var range = $scope.sketch.files[0].hardcodeMeshPosition(offset, name, x, y, z);
 			    if (!$scope.$$phase) {
 					$scope.$apply();
@@ -548,7 +540,7 @@
                 // Jump to assignment of global reference to the Mesh selected by LeapMotion.
                 Mousetrap.bind('ctrl+m', function () {
 					if (this.riftSandbox.leapMeshReference) {
-						var range = esprimaCalcTextAreaRange(mesh);
+						var range = esprimaCalcTextAreaRange(this.riftSandbox.leapMeshReference);
 						this.textarea.selectionStart = range[0];
 						this.textarea.selectionEnd = range[1];
                     }
@@ -564,33 +556,47 @@
 					} else {
 						// Otherwise, find a global reference to the mesh and update it's code position.
 						if (this.riftSandbox.leapMeshReference) {
-							// Locate any calls to mesh.position.
-							var calls = esprimaFindPositionCalls(this.riftSandbox.leapMeshReference);
-							
-							if (calls.length > 0 && calls[calls.length - 1].type == "CallExpression" && calls[calls.length - 1].callee.property.name == "set") {
-								// If calls to the global mesh's position exist and the last one is position.set, modify it to match Leap coordinates.
+							// Find the Identifier for both cases where leapMeshReference can be a VariableDeclarator (.id) or an AssignmentExpression (.left).
+							var leapMeshId = this.riftSandbox.leapMeshReference.id ? this.riftSandbox.leapMeshReference.id : this.leapMeshReference.left;
+							if (leapMeshId) {
+								// Locate any calls to mesh.position.
+								var calls = esprimaFindPositionCalls(leapMeshId);
 								
-								// Find range in textarea to modify
-								var args = calls[calls.length - 1].arguments;
-								var firstRange = esprimaCalcTextAreaRange(args[0]);
-								var lastRange = esprimaCalcTextAreaRange(args[args.length - 1]);
-								var totalRange = [firstRange[0], lastRange[1]];
-								
-								// Set cursor position and update code.
-								setValueAndKeepSelection(totalRange, this.riftSandbox.leapPos[0] + ", " + this.riftSandbox.leapPos[1] + ", " + this.riftSandbox.leapPos[2]);
-							} else {
-								// Otherwise, add the position.set call to the code after the last call to the global mesh's position or the variable declaration.
-								
-								// Find range in textarea to modify
-								var range;
-								if (calls.length > 0) {
-									range = esprimaCalcTextAreaRange(calls[calls.length - 1]);
-								} else {
-									range = esprimaCalcTextAreaRange(this.riftSandbox.leapMeshReference);
+								var positionSetIdx = -1;
+								for (var i = 0; i < calls.length; i++) {
+									if (calls[i].type == "CallExpression" && calls[i].callee.property.name == "set") {
+										positionSetIdx = i;
+									}
 								}
-								
-								// Set cursor position and insert code.
-								hardcodeMeshPositionAndKeepSelection(range[1], this.riftSandbox.leapMeshReference.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
+								if (positionSetIdx > -1) {
+									// If calls to the global mesh's position exist and at least one is position.set, modify it to match Leap coordinates.
+									
+									// Find range in textarea to modify
+									var args = calls[positionSetIdx].arguments;
+									var firstRange = esprimaCalcTextAreaRange(args[0]);
+									var lastRange = esprimaCalcTextAreaRange(args[args.length - 1]);
+									var totalRange = [firstRange[0], lastRange[1]];
+									
+									// Set cursor position and update code.
+									setValueAndKeepSelection(totalRange, this.riftSandbox.leapPos[0] + ", " + this.riftSandbox.leapPos[1] + ", " + this.riftSandbox.leapPos[2]);
+								} else {
+									// Otherwise, add the position.set call to the code after the last call to the global mesh's position or the variable declaration.
+									
+									// Find range in textarea to modify
+									var range;
+									if (calls.length > 0) {
+										range = esprimaCalcTextAreaRange(calls[calls.length - 1]);
+									} else {
+										range = esprimaCalcTextAreaRange(this.riftSandbox.leapMeshReference);
+									}
+									
+									// Set cursor position and insert code.
+									hardcodeMeshPositionAndKeepSelection(range[1], leapMeshId.name, this.riftSandbox.leapPos[0], this.riftSandbox.leapPos[1], this.riftSandbox.leapPos[2]);
+								}
+							} else {
+								// Reference was somehow lost between grabbing and releasing the mesh. This should not happen
+								// but may occur if code is updated between the two events.
+								throw "Failed to find Leap mesh reference";
 							}
 						} else {
 							// Reference was somehow lost between grabbing and releasing the mesh. This should not happen
@@ -690,7 +696,7 @@
 					loc: true,
 					range: true
 				});
-				console.log(this.esprimaOut);
+				debugLog(this.esprimaOut);
 
                 if (_sketchLoop) {
                     this.sketchLoop = _sketchLoop;
@@ -814,6 +820,8 @@
 			
 			// Recursively attempts to find a valid reference to the runtime mesh argument. The stackRecursion argument
 			// details how far outward in the call stack the algorithm is. It should start at zero to examine the call to scene.add.
+			// The return value is the AssignmentExpression or VariableDeclarator that assigns the reference in the global scope,
+			// or null if the mesh could not be referenced in the global scope.
 			var esprimaFindMeshReference = function(mesh, stackRecursion) {
 				// Find line and column where the scene.add call originated in the global scope.
 				var addPosition = extractSceneAddPosition(mesh.riftSketch_stack);
@@ -837,6 +845,10 @@
 					}
 				} else {
 					var stackPosition = extractStackReferencePosition(mesh.riftSketch_stack, stackRecursion + 1);
+					// Node for the full body of the AssignmentExpression or VariableDeclarator that assigned the reference.
+					var assignment;
+					// Node for the sub-node of the reference. Left half of the assignment operator, or the argument if the reference
+					// is in a function call like scene.add(reference).
 					var reference;
 					
 					// Find variable of interest.
@@ -866,10 +878,10 @@
 					}
 					
 					if (stackPosition.line == globalPosition.line && stackPosition.column == globalPosition.column) {
-						// If we are at global scope, return the reference.
-						return reference;
+						// If we are at global scope, return the assignment.
+						return assignment;
 					} else {
-						// Otherwise, check if reference was returned from the function.
+						// Otherwise, check if the reference was returned from the function.
 						var scope = esprimaFindFunctionDefinition(reference.range);
 						var body;
 						if (scope.init && scope.init.body && scope.init.body.body) {
@@ -883,7 +895,6 @@
 						}
 					}
 				}
-				return null;
 			}.bind(this);
 			
 			// Gets an array of all statements inside the body argument that use the identifier of reference,
