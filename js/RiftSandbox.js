@@ -46,6 +46,7 @@ var RiftSandbox = (function () {
 	// The mesh currently being dragged around by the user, so that their hand
 	// will not switch targets if it gets too close to another.
 	this.leapMeshLocked = null;
+	this.propertyMeshes = [];
 
     var maxAnisotropy = this.renderer.getMaxAnisotropy();
     var groundTexture = THREE.ImageUtils.loadTexture('img/background.png');
@@ -166,7 +167,17 @@ var RiftSandbox = (function () {
 	  }
     }
     this.sceneStuff = [];
+	this.clearPropertyMeshes();
   };
+  
+  // Remove any pre-existing property meshes.
+  constr.prototype.clearPropertyMeshes = function() {
+    while (this.propertyMeshes.length > 0) {
+      var propertyMesh = this.riftSandbox.propertyMeshes.pop()
+      propertyMesh.titleElement.parentElement.removeChild(propertyMesh.titleElement);
+      this.scene.remove(propertyMesh);
+    }
+  }
 
   constr.prototype.render = function () {
     var

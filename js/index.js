@@ -212,6 +212,9 @@
                     this.riftSandbox.setBaseRotation();
                     this.riftSandbox.updateCameraPositionRotation();
                 }
+				
+				// Re-project property mesh titles.
+				updatePropertyMeshes();
 
                 // Pick out the objects the user cares about (that is, that the user has named)
                 var namedObjects = [];
@@ -236,6 +239,14 @@
 
                 this.riftSandbox.render();
             };
+			
+			// Updates the position of the titleElement of each propertyMesh.
+			var updatePropertyMeshes = function() {
+				for (var i = 0; i < this.riftSandbox.propertyMeshes.length; i++) {
+					var propertyMesh = this.riftSandbox.propertyMeshes[i];
+					projectElement(propertyMesh.titleElement, propertyMesh.position);
+				}
+			}.bind(this);
 
             this.deviceManager = new DeviceManager();
 			
@@ -618,12 +629,32 @@
                 }.bind(this), 'keypress');
 				
 				// Show properties of the Leap mesh as intangible meshes.
-				Mousetrap.bind('ctrl+e', function () {
+				Mousetrap.bind('ctrl+shift+y', function () {
 					// If Leap mesh is not currently being moved, display its properties.
-					if (!this.riftSandbox.leapMeshLocked) {
-						var propertyMesh = new THREE.Mesh(BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({color: 'blue', transparent: false, opacity: 0.5}));
-						propertyMesh.position.set(this.riftSandbox.leapMesh.position.get()).add(0, 0, 1.5);
-						riftSketch_addIntangible(propretyMesh);
+					if (!this.riftSandbox.leapMeshLocked && this.riftSandbox.leapMesh) {
+						// Remove any pre-existing property meshes.
+						this.riftSandbox.clearPropertyMeshes();
+						
+						// Create a mesh for each property.
+						var titleElements = [];
+						var obj = this.riftSandbox.leapMesh;
+						for (var i in obj) {
+							if (obj.hasOwnProperty(i)) {
+								var propertyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshLambertMaterial({color: 'blue'}));
+								propertyMesh.position.set(0, 0, 0).add(this.riftSandbox.leapMesh.position);
+								var titleElement = createProjectedStringElement(i + "=" + obj[i]);
+								propertyMesh.titleElement = titleElement;
+								this.riftSandbox.propertyMeshes.push(propertyMesh);
+							}
+						}
+						
+						// Set mesh positions and add to scene.
+						var angleOff = (2 * Math.PI) / this.riftSandbox.propertyMeshes.length;
+						for (var i = 0; i < this.riftSandbox.propertyMeshes.length; i++) {
+							var dispVector = new THREE.Vector3(1.5 * Math.cos(i * angleOff), 1.5 * Math.sin(i * angleOff), 0);
+							this.riftSandbox.propertyMeshes[i].position.add(dispVector);
+							this.riftSandbox.scene.add(this.riftSandbox.propertyMeshes[i]);
+						}
 					}
                 }.bind(this), 'keypress');
 				
@@ -723,7 +754,36 @@
                 }
                 localStorage.setItem('autosave', code);
             }.bind(this));
-	
+			
+			// Text rendering
+			
+			var initTextRendering = function() {
+				this.projector = new THREE.Projector();
+			}.bind(this);
+			
+			var createProjectedStringElement = function(s) {
+				var element = document.createElement('div');
+				element.style.position = 'absolute';
+				element.style.width = 100;
+				element.style.height = 100;
+				element.style.color = 'white';
+				element.style.backgroundColor = 'black';
+				element.innerHTML = s;
+				document.body.appendChild(element);
+				return element;
+			}.bind(this);
+			
+			var projectElement = function(element, position) {
+				this.riftSandbox.camera.updateMatrixWorld();
+				var vector = this.projector.projectVector(position.clone(), this.riftSandbox.camera);
+				element.style.left = (vector.x + 1) / 2 * window.innerWidth + 'px';
+				element.style.top = -(vector.y - 1) / 2 * window.innerHeight + 'px';
+			}.bind(this);
+			
+			initTextRendering();
+			
+			// Esprima functions
+			
 			var esprimaWalkForCondition = function(body, condition, stepOver) {
 				var results = [];
 				if (Object.prototype.toString.call(body) == "[object Array]") {
