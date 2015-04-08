@@ -617,8 +617,6 @@
 					}
                 }.bind(this), 'keypress');
 				
-            }.bind(this);
-			
 				// Show properties of the Leap mesh as intangible meshes.
 				Mousetrap.bind('ctrl+e', function () {
 					// If Leap mesh is not currently being moved, display its properties.
