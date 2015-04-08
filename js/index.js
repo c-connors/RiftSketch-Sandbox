@@ -618,6 +618,19 @@
                 }.bind(this), 'keypress');
 				
             }.bind(this);
+			
+				// Show properties of the Leap mesh as intangible meshes.
+				Mousetrap.bind('ctrl+e', function () {
+					// If Leap mesh is not currently being moved, display its properties.
+					if (!this.riftSandbox.leapMeshLocked) {
+						var propertyMesh = new THREE.Mesh(BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({color: 'blue', transparent: false, opacity: 0.5}));
+						propertyMesh.position.set(this.riftSandbox.leapMesh.position.get()).add(0, 0, 1.5);
+						riftSketch_addIntangible(propretyMesh);
+					}
+                }.bind(this), 'keypress');
+				
+            }.bind(this);
+			
             this.bindKeyboardShortcuts();
 
             var toggleVrMode = function () {
