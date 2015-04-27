@@ -33,6 +33,9 @@ var RiftSandbox = (function () {
     this.camera = new THREE.PerspectiveCamera(
       75, this.width / this.height, 0.1, 1000 );
     this.camera.position.copy(this.BasePosition);
+	
+	this.mouseCamera = new THREE.Object3D();
+	this.mouseCamera.position.copy(this.BasePosition);
 
     this.cameraPivot = new THREE.Object3D();
     this.scene.add(this.cameraPivot);
@@ -304,6 +307,7 @@ var RiftSandbox = (function () {
     this._move();
     if (!this.vrMode) {
       this.camera.rotation.set(0 , this.plainRotation.y, 0);
+	  this.mouseCamera.rotation.set(0 , this.plainRotation.y, 0);
     }
     this.cameraPivot.quaternion.multiplyQuaternions(
       this.BaseRotation, this.HMDRotation);

@@ -324,7 +324,8 @@
             Leap.loop({}, function (frame) {
                 if (frame.hands.length) {
                     this.handCurrent = frame;
-                    if (this.altPressed && this.handStart) {
+					// Removed this feature temporarily as it would fire when not wanted
+                    if (false && this.altPressed && this.handStart) {
                         var hand = frame.hands[0];
                         var handTranslation = hand.translation(this.handStart);
                         var factor = this.shiftPressed ? 10 : 100;
@@ -628,16 +629,16 @@
 					}
                 }.bind(this), 'keypress');
 				
-				// Show properties of the Leap mesh as intangible meshes.
+				// Show properties of the riftSketch_dataObject of the Leap mesh as intangible meshes.
 				Mousetrap.bind('ctrl+shift+y', function () {
 					// If Leap mesh is not currently being moved, display its properties.
-					if (!this.riftSandbox.leapMeshLocked && this.riftSandbox.leapMesh) {
+					if (!this.riftSandbox.leapMeshLocked && this.riftSandbox.leapMesh && this.riftSandbox.leapMesh.riftSketch_dataObject) {
 						// Remove any pre-existing property meshes.
 						this.riftSandbox.clearPropertyMeshes();
 						
 						// Create a mesh for each property.
 						var titleElements = [];
-						var obj = this.riftSandbox.leapMesh;
+						var obj = this.riftSandbox.leapMesh.riftSketch_dataObject;
 						for (var i in obj) {
 							if (obj.hasOwnProperty(i)) {
 								var propertyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshLambertMaterial({color: 'blue'}));
