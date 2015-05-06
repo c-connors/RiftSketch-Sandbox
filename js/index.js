@@ -577,7 +577,7 @@
 						// Otherwise, find a global reference to the mesh and update it's code position.
 						if (this.riftSandbox.leapMeshReference) {
 							// Find the Identifier for both cases where leapMeshReference can be a VariableDeclarator (.id) or an AssignmentExpression (.left).
-							var leapMeshId = this.riftSandbox.leapMeshReference.id ? this.riftSandbox.leapMeshReference.id : this.leapMeshReference.left;
+							var leapMeshId = this.riftSandbox.leapMeshReference.id ? this.riftSandbox.leapMeshReference.id : this.riftSandbox.leapMeshReference.left;
 							if (leapMeshId) {
 								// Locate any calls to mesh.position.
 								var calls = esprimaFindPositionCalls(leapMeshId);
